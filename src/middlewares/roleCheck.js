@@ -1,6 +1,3 @@
-/**
- * Role-based authorization middleware
- */
 const logger = require('../utils/logger');
 
 /**

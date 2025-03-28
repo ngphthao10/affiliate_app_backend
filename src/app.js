@@ -27,8 +27,6 @@ app.use('/api/users', userRoutes);
 app.use('/api/product', productRoutes);
 
 
-
-// Error handling middleware
 app.use(errorHandler);
 
 // 404 route

@@ -1,12 +1,5 @@
-/**
- * Global error handling middleware
- */
 const logger = require('../utils/logger');
 
-/**
- * Error handling middleware
- * Captures errors and sends appropriate response
- */
 exports.errorHandler = (err, req, res, next) => {
     // Log the error
     logger.error(`Error: ${err.message}`, { stack: err.stack });
