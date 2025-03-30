@@ -1,21 +1,22 @@
 const express = require('express');
 const {
     listProducts,
+    getProduct,
     addProduct,
-    removeProduct,
-    singleProduct
+    updateProduct,
+    deleteProduct,
+    deleteProductImage
 } = require('../controllers/productController');
 const upload = require('../middlewares/multer');
-const auth = require('../middlewares/auth');
 const adminAuth = require('../middlewares/adminAuth');
 
 const router = express.Router();
 
-// Public routes
-router.get('/list', listProducts);
-router.post('/single', singleProduct);
+// All routes are protected with adminAuth
+router.get('/list', adminAuth, listProducts);
+router.get('/details/:id', adminAuth, getProduct);
+router.get('/edit/:id', adminAuth, getProduct);  // Uses same handler as details
 
-// Admin routes (protected)
 router.post(
     '/add',
     adminAuth,
@@ -28,6 +29,19 @@ router.post(
     addProduct
 );
 
-router.post('/remove', adminAuth, removeProduct);
+router.put(
+    '/update/:id',
+    adminAuth,
+    upload.fields([
+        { name: 'image1', maxCount: 1 },
+        { name: 'image2', maxCount: 1 },
+        { name: 'image3', maxCount: 1 },
+        { name: 'image4', maxCount: 1 }
+    ]),
+    updateProduct
+);
+
+router.delete('/:id', adminAuth, deleteProduct);
+router.delete('/image/:imageId', adminAuth, deleteProductImage);
 
 module.exports = router;
