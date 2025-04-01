@@ -4,9 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const Op = Sequelize.Op;
 
-/**
- * List all products with filtering, sorting and pagination
- */
+
 exports.listProducts = async (req, res) => {
     try {
         const {
@@ -56,12 +54,44 @@ exports.listProducts = async (req, res) => {
         const sortField = validSortFields.includes(sort_by) ? sort_by : 'creation_at';
         const sortDirection = sort_order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
+        // First, get all subCategory_id values from products
+        const productsWithSubCatId = await product.findAll({
+            where: whereConditions,
+            attributes: ['subCategory_id'],
+            raw: true
+        });
+
+        // Extract unique subCategory_id values
+        const subCategoryIds = [...new Set(productsWithSubCatId
+            .map(p => p.subCategory_id)
+            .filter(id => id !== null && id !== undefined))];
+
+        // Fetch subcategory data
+        let subCategories = [];
+        if (subCategoryIds.length > 0) {
+            subCategories = await category.findAll({
+                where: {
+                    category_id: {
+                        [Op.in]: subCategoryIds
+                    }
+                },
+                attributes: ['category_id', 'display_text'],
+                raw: true
+            });
+        }
+
+        // Create a mapping of subCategory_id values to their display text
+        const subCategoryMap = {};
+        subCategories.forEach(sc => {
+            subCategoryMap[sc.category_id] = sc.display_text;
+        });
+
         // Get products with filters, sorting, and pagination
         const products = await product.findAll({
             where: whereConditions,
             attributes: [
                 'product_id', 'name', 'description', 'sku',
-                'small_image', 'category_id', 'reviews_count',
+                'small_image', 'category_id', 'subCategory_id', 'reviews_count',
                 'out_of_stock', 'commission_rate',
                 'creation_at', 'modified_at'
             ],
@@ -140,6 +170,15 @@ exports.listProducts = async (req, res) => {
                 });
             }
 
+            // Handle subCategory using the mapping we created
+            let subCategoryData = null;
+            if (product.subCategory_id) {
+                subCategoryData = {
+                    id: product.subCategory_id,
+                    name: subCategoryMap[product.subCategory_id] || `Category ${product.subCategory_id}`
+                };
+            }
+
             return {
                 id: product.product_id,
                 name: product.name,
@@ -149,6 +188,7 @@ exports.listProducts = async (req, res) => {
                     id: product.category?.category_id,
                     name: product.category?.display_text
                 },
+                subCategory: subCategoryData,
                 images: images,
                 price: {
                     min: minPrice,
@@ -184,13 +224,9 @@ exports.listProducts = async (req, res) => {
     }
 };
 
-/**
- * Add a new product with inventory and images
- */
-
 exports.addProduct = async (req, res) => {
     try {
-        const { name, description, sku, category_id, commission_rate, inventory } = req.body;
+        const { name, description, sku, category_id, subCategory, commission_rate, inventory } = req.body;
 
         // Parse inventory if needed
         let parsedInventory = [];
@@ -240,6 +276,7 @@ exports.addProduct = async (req, res) => {
                 message: "Valid category ID is required"
             });
         }
+        const subCategoryId = parseInt(subCategory, 10) || null;
 
         // Function to convert full path to relative URL
         const getRelativeUrl = (filePath) => {
@@ -255,8 +292,9 @@ exports.addProduct = async (req, res) => {
                 name,
                 description,
                 sku: sku || `SKU-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-                small_image: req.savedPaths.image1, // Use the saved relative path
+                small_image: req.savedPaths.image1,
                 category_id: categoryId,
+                subCategory_id: subCategoryId,
                 out_of_stock: parsedInventory.every(item => parseInt(item.quantity) <= 0),
                 commission_rate: commission_rate || 0,
                 creation_at: new Date(),
@@ -322,9 +360,7 @@ exports.addProduct = async (req, res) => {
         });
     }
 };
-/**
- * Get product details for editing
- */
+
 exports.getProduct = async (req, res) => {
     try {
         const { id } = req.params;
@@ -371,6 +407,14 @@ exports.getProduct = async (req, res) => {
             });
         }
 
+        // Get subcategory info if it exists
+        let subCategory = null;
+        if (productData.subCategory_id) {
+            subCategory = await category.findByPk(productData.subCategory_id, {
+                attributes: ['category_id', 'display_text']
+            });
+        }
+
         // Format response
         const formattedProduct = {
             id: productData.product_id,
@@ -386,6 +430,10 @@ exports.getProduct = async (req, res) => {
                     name: parentCategory.display_text
                 } : null
             },
+            subCategory: subCategory ? {
+                id: subCategory.category_id,
+                name: subCategory.display_text
+            } : null,
             images: productData.product_images.map(img => ({
                 id: img.image_id,
                 url: img.image,
@@ -419,9 +467,7 @@ exports.getProduct = async (req, res) => {
         });
     }
 };
-/**
- * Update an existing product
- */
+
 exports.updateProduct = async (req, res) => {
     try {
         const { id } = req.params;
@@ -448,6 +494,7 @@ exports.updateProduct = async (req, res) => {
             description,
             sku,
             category_id,
+            subCategory_id, // Add support for subcategory
             commission_rate,
             inventory,
             removed_images = [] // Add support for removed images
@@ -492,6 +539,7 @@ exports.updateProduct = async (req, res) => {
                 description: description || '',
                 sku: sku || '',
                 category_id: category_id,
+                subCategory_id: subCategory_id || null, // Include subcategory_id in update
                 commission_rate: commission_rate || 0,
                 modified_at: new Date()
             };

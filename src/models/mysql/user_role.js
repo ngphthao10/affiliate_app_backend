@@ -1,6 +1,6 @@
 const Sequelize = require('sequelize');
-module.exports = function(sequelize, DataTypes) {
-  return sequelize.define('user_role', {
+module.exports = function (sequelize, DataTypes) {
+  const UserRole = sequelize.define('user_role', {
     role_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
@@ -42,4 +42,17 @@ module.exports = function(sequelize, DataTypes) {
       },
     ]
   });
+
+  UserRole.associate = function (models) {
+    UserRole.belongsTo(models.roles, {
+      foreignKey: 'role_id',
+      as: 'role'
+    });
+
+    UserRole.belongsTo(models.users, {
+      foreignKey: 'user_id'
+    });
+  };
+
+  return UserRole;
 };

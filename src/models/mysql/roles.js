@@ -1,6 +1,6 @@
 const Sequelize = require('sequelize');
-module.exports = function(sequelize, DataTypes) {
-  return sequelize.define('roles', {
+module.exports = function (sequelize, DataTypes) {
+  const Roles = sequelize.define('roles', {
     role_id: {
       autoIncrement: true,
       type: DataTypes.INTEGER,
@@ -30,4 +30,21 @@ module.exports = function(sequelize, DataTypes) {
       },
     ]
   });
+
+  // Associate models when the model is initialized
+  Roles.associate = function (models) {
+    // Roles has many UserRoles
+    Roles.hasMany(models.user_role, {
+      foreignKey: 'role_id',
+      as: 'user_roles'
+    });
+
+    Roles.belongsToMany(models.users, {
+      through: models.user_role,
+      foreignKey: 'role_id',
+      otherKey: 'user_id'
+    });
+  };
+
+  return Roles;
 };

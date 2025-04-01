@@ -11,6 +11,9 @@ const indexRoutes = require('./routes/index');
 const userRoutes = require('./routes/userRoutes');
 const productRoutes = require('./routes/productRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
+const customerRoutes = require('./routes/customerRoutes');
+const kolTierRoutes = require('./routes/kolTierRoutes');
+const kolRoutes = require('./routes/kolRoutes');
 
 
 // Create Express app
@@ -30,6 +33,9 @@ app.use('/api', indexRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/product', productRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/customers', customerRoutes);
+app.use('/api/kol-tiers', kolTierRoutes);
+app.use('/api/kols', kolRoutes);
 
 app.use(errorHandler);
 

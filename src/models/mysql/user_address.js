@@ -1,6 +1,6 @@
 const Sequelize = require('sequelize');
-module.exports = function(sequelize, DataTypes) {
-  return sequelize.define('user_address', {
+module.exports = function (sequelize, DataTypes) {
+  const UserAddress = sequelize.define('user_address', {
     address_id: {
       autoIncrement: true,
       type: DataTypes.INTEGER,
@@ -73,4 +73,14 @@ module.exports = function(sequelize, DataTypes) {
       },
     ]
   });
+
+  // Thêm phương thức associate
+  UserAddress.associate = function (models) {
+    UserAddress.belongsTo(models.users, {
+      foreignKey: 'user_id',
+      as: 'user'
+    });
+  };
+
+  return UserAddress;
 };
