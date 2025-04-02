@@ -14,6 +14,7 @@ const categoryRoutes = require('./routes/categoryRoutes');
 const customerRoutes = require('./routes/customerRoutes');
 const kolTierRoutes = require('./routes/kolTierRoutes');
 const kolRoutes = require('./routes/kolRoutes');
+const orderRoutes = require('./routes/orderRoutes');
 
 
 // Create Express app
@@ -36,6 +37,7 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/kol-tiers', kolTierRoutes);
 app.use('/api/kols', kolRoutes);
+app.use('/api/order', orderRoutes);
 
 app.use(errorHandler);
 

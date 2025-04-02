@@ -1,8 +1,8 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { User } = require('../models/mysql');
-const { Role } = require('../models/mysql');
-const { UserRole } = require('../models/mysql');
+const { users } = require('../models/mysql');
+const { roles } = require('../models/mysql');
+const { user_role } = require('../models/mysql');
 const logger = require('../utils/logger');
 const validator = require('validator');
 
@@ -43,7 +43,7 @@ const registerUser = async (req, res) => {
         }
 
         // Check if user already exists
-        const existingUser = await User.findOne({ where: { email } });
+        const existingUser = await users.findOne({ where: { email } });
         if (existingUser) {
             return res.json({
                 success: false,
@@ -56,7 +56,7 @@ const registerUser = async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, salt);
 
         // Create user
-        const user = await User.create({
+        const user = await users.create({
             username: email,
             first_name: name,
             email,
@@ -65,9 +65,9 @@ const registerUser = async (req, res) => {
         });
 
         // Assign customer role to user
-        const customerRole = await Role.findOne({ where: { role_name: 'customer' } });
+        const customerRole = await roles.findOne({ where: { role_name: 'customer' } });
         if (customerRole) {
-            await UserRole.create({
+            await user_role.create({
                 user_id: user.user_id,
                 role_id: customerRole.role_id
             });
@@ -110,7 +110,7 @@ const loginUser = async (req, res) => {
         }
 
         // Find user
-        const user = await User.findOne({ where: { email } });
+        const user = await users.findOne({ where: { email } });
         if (!user) {
             return res.json({
                 success: false,

@@ -562,6 +562,7 @@ exports.approveApplication = async (req, res) => {
         await application.update({
             status: 'active',
             tier_id: tierIdToUse,
+            status_reason: '',
             modified_at: new Date()
         });
 
