@@ -33,14 +33,14 @@ module.exports = function (sequelize, DataTypes) {
       ]
     });
 
-  Product.associate = function (models) {
-    Product.hasMany(models.ProductImage, { foreignKey: 'product_id', as: 'images' });
-    Product.hasMany(models.ProductInventory, { foreignKey: 'product_id', as: 'inventory' });
-    Product.belongsTo(models.Category, { foreignKey: 'category_id', as: 'category' });
-    Product.belongsTo(models.Category, { foreignKey: 'subCategory_id', as: 'subCategory' });
-    Product.hasMany(models.Review, { foreignKey: 'product_id', as: 'reviews' });
-    Product.hasMany(models.InfluencerAffiliateLink, { foreignKey: 'product_id', as: 'affiliateLinks' });
-  };
+  // Product.associate = function (models) {
+  //   Product.hasMany(models.ProductImage, { foreignKey: 'product_id', as: 'images' });
+  //   Product.hasMany(models.ProductInventory, { foreignKey: 'product_id', as: 'inventory' });
+  //   Product.belongsTo(models.Category, { foreignKey: 'category_id', as: 'category' });
+  //   Product.belongsTo(models.Category, { foreignKey: 'subCategory_id', as: 'subCategory' });
+  //   Product.hasMany(models.Review, { foreignKey: 'product_id', as: 'reviews' });
+  //   Product.hasMany(models.InfluencerAffiliateLink, { foreignKey: 'product_id', as: 'affiliateLinks' });
+  // };
 
   return Product;
 };
