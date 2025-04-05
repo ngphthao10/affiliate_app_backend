@@ -35,9 +35,4 @@ const testConnection = async () => {
 };
 
 // Export models and Sequelize instances
-module.exports = {
-    ...models,
-    sequelize,
-    Sequelize,
-    testConnection
-};
+module.exports = { ...models, sequelize, Sequelize, testConnection };

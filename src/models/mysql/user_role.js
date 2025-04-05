@@ -43,16 +43,16 @@ module.exports = function (sequelize, DataTypes) {
     ]
   });
 
-  UserRole.associate = function (models) {
-    UserRole.belongsTo(models.roles, {
-      foreignKey: 'role_id',
-      as: 'role'
-    });
+  // UserRole.associate = function (models) {
+  //   UserRole.belongsTo(models.roles, {
+  //     foreignKey: 'role_id',
+  //     as: 'role'
+  //   });
 
-    UserRole.belongsTo(models.users, {
-      foreignKey: 'user_id'
-    });
-  };
+  //   UserRole.belongsTo(models.users, {
+  //     foreignKey: 'user_id'
+  //   });
+  // };
 
   return UserRole;
 };
