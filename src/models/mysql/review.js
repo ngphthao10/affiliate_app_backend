@@ -5,7 +5,9 @@ module.exports = function (sequelize, DataTypes) {
     user_id: { type: DataTypes.INTEGER, allowNull: false, references: { model: 'users', key: 'user_id' } },
     product_id: { type: DataTypes.INTEGER, allowNull: false, references: { model: 'product', key: 'product_id' } },
     rate: { type: DataTypes.INTEGER, allowNull: false },
-    status: { type: DataTypes.ENUM('pending', 'approved', 'rejected'), allowNull: true },
+    content: { type: DataTypes.TEXT, allowNull: true },
+    status: { type: DataTypes.ENUM('pending', 'approved', 'rejected'), allowNull: false, defaultValue: 'pending' },
+    rejection_reason: { type: DataTypes.TEXT, allowNull: true },
     creation_at: { type: DataTypes.DATE, allowNull: true, defaultValue: Sequelize.Sequelize.literal('CURRENT_TIMESTAMP') },
     modified_at: { type: DataTypes.DATE, allowNull: true, defaultValue: Sequelize.Sequelize.literal('CURRENT_TIMESTAMP') }
   }, {

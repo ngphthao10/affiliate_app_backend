@@ -16,6 +16,9 @@ const kolTierRoutes = require('./routes/kolTierRoutes');
 const kolRoutes = require('./routes/kolRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
+const kolPayoutRoutes = require('./routes/kolPayoutRoutes');
+const reviewRoutes = require('./routes/reviewRoutes')
+
 
 // Create Express app
 const app = express();
@@ -39,6 +42,8 @@ app.use('/api/kol-tiers', kolTierRoutes);
 app.use('/api/kols', kolRoutes);
 app.use('/api/order', orderRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/kol-payouts', kolPayoutRoutes);
+app.use('/api/reviews', reviewRoutes);
 
 app.use(errorHandler);
 
