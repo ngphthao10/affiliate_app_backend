@@ -5,7 +5,7 @@ const { roles } = require('../models/mysql');
 const { user_role } = require('../models/mysql');
 const logger = require('../utils/logger');
 const validator = require('validator');
-
+require('dotenv').config();
 // Create JWT token
 const createToken = (userId) => {
     return jwt.sign(
