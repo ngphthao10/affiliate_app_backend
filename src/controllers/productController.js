@@ -334,8 +334,8 @@ exports.listBestSellers = async (req, res) => {
                 'product.modified_at',
                 'product.subCategory_id'
             ],
-            order: [[Sequelize.literal('total_quantity_sold'), 'DESC']],
-            limit: 10
+            order: [[Sequelize.literal('total_quantity_sold'), 'DESC']]
+            
         });
 
         // Format lại dữ liệu để phù hợp với frontend
