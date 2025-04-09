@@ -238,15 +238,14 @@ CREATE TABLE review (
   review_id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
   product_id INT NOT NULL,
-  content nvarchar(500),
   rate INT NOT NULL CHECK (rate BETWEEN 1 AND 5),
   status ENUM ('pending', 'approved', 'rejected'),
-  rejection_reason nvarchar(500),
   creation_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   modified_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(user_id),
   FOREIGN KEY (product_id) REFERENCES product(product_id)
 );
+
 -- Trigger to update product reviews_count when a review is added/deleted
 DELIMITER $$
 CREATE TRIGGER update_reviews_count_insert

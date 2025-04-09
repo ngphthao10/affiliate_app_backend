@@ -50,7 +50,7 @@ exports.listProducts = async (req, res) => {
         const totalProductsCount = await product.count({ where: whereConditions });
 
         // Validate sort parameters
-        const validSortFields = ['name', 'creation_at', 'modified_at', 'reviews_count', 'commission_rate'];
+        const validSortFields = ['name', 'creation_at', 'modified_at', 'reviews_count'];
         const sortField = validSortFields.includes(sort_by) ? sort_by : 'creation_at';
         const sortDirection = sort_order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
@@ -122,24 +122,28 @@ exports.listProducts = async (req, res) => {
 
         // Format the response
         const formattedProducts = products.map(product => {
+            // Xử lý images - ưu tiên product_images, fallback sang small_image
             let images = [];
 
             if (product.product_images && product.product_images.length > 0) {
+                // Sử dụng ảnh từ product_images
                 images = product.product_images.map(img => ({
                     id: img.image_id,
                     url: img.image,
                     alt: img.alt || product.name
                 }));
             } else if (product.small_image) {
+                // Fallback sang small_image nếu có
                 images = [{
                     id: null,
                     url: product.small_image,
                     alt: product.name
                 }];
             } else {
+                // Nếu không có ảnh nào, sử dụng placeholder
                 images = [{
                     id: null,
-                    url: '/images/placeholder-product.jpg',
+                    url: '/images/placeholder-product.jpg', // Đường dẫn đến ảnh placeholder
                     alt: 'No image available'
                 }];
             }
@@ -166,6 +170,7 @@ exports.listProducts = async (req, res) => {
                 });
             }
 
+            // Handle subCategory using the mapping we created
             let subCategoryData = null;
             if (product.subCategory_id) {
                 subCategoryData = {
@@ -179,7 +184,6 @@ exports.listProducts = async (req, res) => {
                 name: product.name,
                 description: product.description,
                 sku: product.sku,
-                commission_rate: product.commission_rate,
                 category: {
                     id: product.category?.category_id,
                     name: product.category?.display_text
@@ -906,6 +910,7 @@ exports.deleteProductImage = async (req, res) => {
  */
 exports.deleteProduct = async (req, res) => {
     try {
+        // Support both query methods: params.id and body.productId
         const productId = req.params.id || req.body.productId;
 
         if (!productId) {
@@ -932,57 +937,48 @@ exports.deleteProduct = async (req, res) => {
             });
         }
 
+        // Delete everything in a transaction
         await product.sequelize.transaction(async (t) => {
-            try {
-                // Delete inventory items
-                await product_inventory.destroy({
-                    where: { product_id: productId },
-                    transaction: t
-                });
+            // Delete inventory items
+            await product_inventory.destroy({
+                where: { product_id: productId },
+                transaction: t
+            });
 
-                // Try to delete physical image files
-                try {
-                    // Delete product images
-                    if (existingProduct.product_images?.length > 0) {
-                        for (const image of existingProduct.product_images) {
-                            if (image.image && fs.existsSync(image.image)) {
-                                fs.unlinkSync(image.image);
-                            }
+            // Try to delete physical image files
+            try {
+                // Delete product images
+                if (existingProduct.product_images?.length > 0) {
+                    for (const image of existingProduct.product_images) {
+                        if (image.image && fs.existsSync(image.image)) {
+                            fs.unlinkSync(image.image);
                         }
                     }
-
-                    // Delete small image if exists
-                    if (existingProduct.small_image && fs.existsSync(existingProduct.small_image)) {
-                        fs.unlinkSync(existingProduct.small_image);
-                    }
-                } catch (fileError) {
-                    logger.error(`Error deleting image files: ${fileError.message}`);
                 }
 
-                await product_image.destroy({
-                    where: { product_id: productId },
-                    transaction: t
-                });
-
-                await existingProduct.destroy({ transaction: t });
-
-                return res.status(200).json({
-                    success: true,
-                    message: "Product deleted successfully"
-                });
-
-            } catch (deleteError) {
-                if (deleteError.name === 'SequelizeForeignKeyConstraintError' ||
-                    (deleteError.original && deleteError.original.code === 'ER_ROW_IS_REFERENCED_2')) {
-                    return res.status(400).json({
-                        success: false,
-                        message: "This product is in an order, cannot delete!"
-                    });
+                // Delete small image if exists
+                if (existingProduct.small_image && fs.existsSync(existingProduct.small_image)) {
+                    fs.unlinkSync(existingProduct.small_image);
                 }
-                throw deleteError;
+            } catch (fileError) {
+                logger.error(`Error deleting image files: ${fileError.message}`);
+                // Continue even if file deletion fails
             }
+
+            // Delete image records from database
+            await product_image.destroy({
+                where: { product_id: productId },
+                transaction: t
+            });
+
+            // Finally delete the product
+            await existingProduct.destroy({ transaction: t });
         });
 
+        res.status(200).json({
+            success: true,
+            message: "Product deleted successfully"
+        });
     } catch (error) {
         logger.error(`Error deleting product: ${error.message}`, { stack: error.stack });
         res.status(500).json({
