@@ -1,4 +1,4 @@
-const { product, product_inventory, product_image, category, Sequelize } = require('../models/mysql');
+const { product,order,order_item, product_inventory, product_image, category, Sequelize } = require('../models/mysql');
 const logger = require('../utils/logger');
 const fs = require('fs');
 const path = require('path');
@@ -199,7 +199,8 @@ exports.listProducts = async (req, res) => {
                 in_stock: !product.out_of_stock,
                 reviews_count: product.reviews_count,
                 created_at: product.creation_at,
-                updated_at: product.modified_at
+                updated_at: product.modified_at,
+                small_image:product.small_image
             };
         });
 
@@ -223,6 +224,204 @@ exports.listProducts = async (req, res) => {
         });
     }
 };
+exports.listBestSellers = async (req, res) => {
+    try {
+        // Build where condition for best sellers
+        const whereConditions = Sequelize.literal(
+            '(SELECT COUNT(*) FROM order_item oi ' +
+            'JOIN product_inventory pi ON oi.inventory_id = pi.inventory_id ' +
+            'JOIN `order` o ON oi.order_id = o.order_id ' +
+            'WHERE pi.product_id = product.product_id AND o.status = "delivered") > 0'
+        );
+
+        // First, get all subCategory_id values from products that match the condition
+        const productsWithSubCatId = await product.findAll({
+            where: whereConditions,
+            attributes: ['subCategory_id'],
+            raw: true
+        });
+
+        // Extract unique subCategory_id values
+        const subCategoryIds = [...new Set(productsWithSubCatId
+            .map(p => p.subCategory_id)
+            .filter(id => id !== null && id !== undefined))];
+
+        // Fetch subcategory data
+        let subCategories = [];
+        if (subCategoryIds.length > 0) {
+            subCategories = await category.findAll({
+                where: {
+                    category_id: {
+                        [Op.in]: subCategoryIds
+                    }
+                },
+                attributes: ['category_id', 'display_text'],
+                raw: true
+            });
+        }
+
+        // Create a mapping of subCategory_id values to their display text
+        const subCategoryMap = {};
+        subCategories.forEach(sc => {
+            subCategoryMap[sc.category_id] = sc.display_text;
+        });
+
+        // Truy vấn các sản phẩm bán chạy nhất
+        const bestSellers = await product.findAll({
+            attributes: [
+                'product_id',
+                'name',
+                'description',
+                'sku',
+                'small_image',
+                'out_of_stock',
+                'reviews_count',
+                'commission_rate',
+                'creation_at',
+                'modified_at',
+                'subCategory_id',
+                [
+                    Sequelize.literal(
+                        `(SELECT SUM(oi.quantity) 
+                          FROM order_item oi 
+                          JOIN product_inventory pi ON oi.inventory_id = pi.inventory_id 
+                          JOIN \`order\` o ON oi.order_id = o.order_id 
+                          WHERE pi.product_id = product.product_id 
+                          AND o.status = 'delivered')`
+                    ),
+                    'total_quantity_sold'
+                ]
+            ],
+            include: [
+                {
+                    model: product_inventory,
+                    as: 'product_inventories',
+                    attributes: ['size', 'price', 'quantity'], // Thêm price để lấy dữ liệu giá
+                    include: [
+                        {
+                            model: order_item,
+                            as: 'order_items',
+                            attributes: [],
+                            include: [
+                                {
+                                    model: order,
+                                    as: 'order',
+                                    attributes: [],
+                                    where: { status: 'delivered' }
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    model: category,
+                    as: 'category',
+                    attributes: ['category_id', 'display_text']
+                },
+                {
+                    model: product_image,
+                    as: 'product_images',
+                    attributes: ['image', 'alt', 'description']
+                }
+            ],
+            where: whereConditions,
+            group: [
+                'product.product_id',
+                'product.name',
+                'product.description',
+                'product.sku',
+                'product.small_image',
+                'product.out_of_stock',
+                'product.reviews_count',
+                'product.commission_rate',
+                'product.creation_at',
+                'product.modified_at',
+                'product.subCategory_id'
+            ],
+            order: [[Sequelize.literal('total_quantity_sold'), 'DESC']],
+            limit: 10
+        });
+
+        // Format lại dữ liệu để phù hợp với frontend
+        const formattedProducts = bestSellers.map(item => {
+            // Handle subCategory using the mapping we created
+            let subCategoryData = null;
+            if (item.subCategory_id) {
+                subCategoryData = {
+                    id: item.subCategory_id,
+                    name: subCategoryMap[item.subCategory_id] || `Category ${item.subCategory_id}`
+                };
+            }
+
+            // Tính minPrice và maxPrice từ product_inventories
+            let minPrice = null;
+            let maxPrice = null;
+            const availableSizes = [];
+
+            if (item.product_inventories && item.product_inventories.length > 0) {
+                item.product_inventories.forEach(inv => {
+                    // Thu thập sizes
+                    if (inv.size && !availableSizes.includes(inv.size)) {
+                        availableSizes.push(inv.size);
+                    }
+                    // Tính minPrice và maxPrice
+                    if (inv.price !== null && inv.price !== undefined) {
+                        if (minPrice === null || inv.price < minPrice) {
+                            minPrice = inv.price;
+                        }
+                        if (maxPrice === null || inv.price > maxPrice) {
+                            maxPrice = inv.price;
+                        }
+                    }
+                });
+            }
+
+            return {
+                id: item.product_id,
+                name: item.name,
+                description: item.description,
+                sku: item.sku,
+                category: {
+                    id: item.category ? item.category.category_id : null,
+                    name: item.category ? item.category.display_text : null
+                },
+                subCategory: subCategoryData,
+                images: item.product_images && item.product_images.length > 0 ? item.product_images.map(img => ({
+                    url: img.image,
+                    alt: img.alt,
+                    description: img.description
+                })) : [],
+                price: {
+                    min: minPrice, // Giá nhỏ nhất
+                    max: maxPrice, // Giá lớn nhất
+                    range: minPrice !== null && maxPrice !== null && minPrice !== maxPrice // Có range nếu min và max khác nhau
+                },
+                sizes: availableSizes, // Danh sách kích thước
+                in_stock: !item.out_of_stock,
+                reviews_count: item.reviews_count,
+                created_at: item.creation_at,
+                updated_at: item.modified_at,
+                small_image: item.small_image,
+                total_quantity_sold: item.get('total_quantity_sold')
+            };
+        });
+
+        res.status(200).json({
+            success: true,
+            products: formattedProducts
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching best-seller products'
+        });
+    }
+};
+
+
+
+
 
 exports.addProduct = async (req, res) => {
     try {
