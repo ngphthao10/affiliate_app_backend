@@ -21,6 +21,8 @@ const kolPayoutRoutes = require('./routes/kolPayoutRoutes');
 const reviewRoutes = require('./routes/reviewRoutes')
 const commissionRoutes = require('./routes/KolRoutes/commissionRoutes');
 const trackingRoutes = require('./routes/trackingRoutes');
+const kolStatsRoutes = require('./routes/KolRoutes/kolStatsRoutes')
+const kolReportRoutes = require('./routes/KolRoutes/kolReportRoutes')
 
 
 // Create Express app
@@ -75,6 +77,8 @@ app.use('/api/track', trackingRoutes);
 
 // for kol
 app.use('/api/commission', commissionRoutes);
+app.use('/api/kol-stats', kolStatsRoutes);
+app.use('/api/kol-report', kolReportRoutes);
 
 
 
