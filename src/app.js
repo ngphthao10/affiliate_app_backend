@@ -19,9 +19,8 @@ const dashboardRoutes = require('./routes/dashboardRoutes');
 
 // Create Express app
 const app = express();
-
 // Middleware
-app.use(helmet()); // Security headers
+app.use(helmet.crossOriginResourcePolicy({ policy: "cross-origin" })); // Security headers
 app.use(cors()); // CORS handling
 app.use(express.json()); // Parse JSON bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies

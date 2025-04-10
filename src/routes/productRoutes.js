@@ -6,7 +6,7 @@ const {
     updateProduct,
     deleteProduct,
     deleteProductImage,
-    listBestSellers
+    listBestSellers,filterProducts
 } = require('../controllers/productController');
 const upload = require('../middlewares/multer');
 const adminAuth = require('../middlewares/adminAuth');
@@ -18,6 +18,7 @@ router.get('/list', listProducts);
 router.get('/details/:id', adminAuth, getProduct);
 router.get('/edit/:id', adminAuth, getProduct);  // Uses same handler as details
 router.get('/best-sellers', listBestSellers);
+router.get('/filterProducts', filterProducts);
 router.post(
     '/add',
     adminAuth,
