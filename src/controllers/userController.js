@@ -255,7 +255,7 @@ const kolLogin = async (req, res) => {
             user: {
                 id: user.user_id,
                 username: user.username,
-                name: user.first_name,
+                name: user.first_name + ' ' + user.last_name,
                 email: user.email,
                 phone: user.phone_num,
                 influencer_id: user.influencer.influencer_id,
