@@ -28,37 +28,5 @@ module.exports = function (sequelize, DataTypes) {
     ]
   });
 
-  // Associate models when the model is initialized
-  Users.associate = function (models) {
-    Users.hasOne(models.influencer, {
-      foreignKey: 'user_id',
-      as: 'influencer'
-    });
-
-    // Users has many UserRoles
-    Users.hasMany(models.user_role, {
-      foreignKey: 'user_id',
-      as: 'user_roles'
-    });
-
-    // Users has many Addresses
-    Users.hasMany(models.user_address, {
-      foreignKey: 'user_id',
-      as: 'user_addresses'
-    });
-
-    // Users has many Orders
-    Users.hasMany(models.order, {
-      foreignKey: 'user_id',
-      as: 'orders'
-    });
-
-    Users.belongsToMany(models.roles, {
-      through: models.user_role,
-      foreignKey: 'user_id',
-      otherKey: 'role_id'
-    });
-  };
-
   return Users;
 };

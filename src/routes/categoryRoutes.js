@@ -4,7 +4,7 @@ const categoryController = require('../controllers/categoryController');
 const adminAuth = require('../middlewares/adminAuth');
 
 
-router.get('/', adminAuth, categoryController.getAllCategories);
+router.get('/', categoryController.getAllCategories);
 router.get('/subcategories', adminAuth, categoryController.getAllSubCategories);
 router.get('/:parentId/subcategories', adminAuth, categoryController.getSubCategories);
 
