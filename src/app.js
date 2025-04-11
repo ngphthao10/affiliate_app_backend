@@ -36,21 +36,7 @@ app.use(morgan('dev', { stream: { write: message => logger.info(message.trim()) 
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // using for test cookies --- delete ==================
-app.use(helmet({
-    contentSecurityPolicy: {
-        directives: {
-            defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'"], // Add 'unsafe-inline'
-            styleSrc: ["'self'", "'unsafe-inline'"],
-            imgSrc: ["'self'", "data:"],
-            connectSrc: ["'self'"],
-            fontSrc: ["'self'"],
-            objectSrc: ["'none'"],
-            mediaSrc: ["'self'"],
-            frameSrc: ["'none'"]
-        }
-    }
-}));
+app.use(helmet.crossOriginResourcePolicy({ policy: "cross-origin" }));
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 const testRoutes = require('./routes/testRoutes');
