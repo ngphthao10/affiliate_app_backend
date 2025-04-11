@@ -19,7 +19,7 @@ const orderRoutes = require('./routes/orderRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 
 const kolPayoutRoutes = require('./routes/kolPayoutRoutes');
-//const reviewRoutes = require('./routes/reviewRoutes')
+const reviewRoutes = require('./routes/reviewRoutes')
 const commissionRoutes = require('./routes/KolRoutes/commissionRoutes');
 const trackingRoutes = require('./routes/trackingRoutes');
 const kolStatsRoutes = require('./routes/KolRoutes/kolStatsRoutes')
@@ -56,7 +56,7 @@ app.use('/api/order', orderRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 
 app.use('/api/kol-payouts', kolPayoutRoutes);
-//app.use('/api/reviews', reviewRoutes);
+app.use('/api/reviews', reviewRoutes);
 app.use('/api/track', trackingRoutes);
 
 // for kol
