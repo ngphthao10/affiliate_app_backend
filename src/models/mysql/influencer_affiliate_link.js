@@ -4,11 +4,13 @@ module.exports = function (sequelize, DataTypes) {
     link_id: { autoIncrement: true, type: DataTypes.INTEGER, allowNull: false, primaryKey: true },
     affliate_link: { type: DataTypes.STRING(255), allowNull: false },
     influencer_id: { type: DataTypes.INTEGER, allowNull: false, references: { model: 'influencer', key: 'influencer_id' } },
-    product_id: { type: DataTypes.INTEGER, allowNull: false, references: { model: 'product', key: 'product_id' } }
+    product_id: { type: DataTypes.INTEGER, allowNull: false, references: { model: 'product', key: 'product_id' } },
+    createdAt: { type: DataTypes.DATE, allowNull: true, defaultValue: Sequelize.Sequelize.literal('CURRENT_TIMESTAMP') },
+    updatedAt: { type: DataTypes.DATE, allowNull: true, defaultValue: Sequelize.Sequelize.literal('CURRENT_TIMESTAMP') }
   }, {
     sequelize,
     tableName: 'influencer_affiliate_link',
-    timestamps: true,
+    timestamps: false,
     indexes: [
       { name: "PRIMARY", unique: true, using: "BTREE", fields: [{ name: "link_id" },] },
       { name: "influencer_id", using: "BTREE", fields: [{ name: "influencer_id" },] },

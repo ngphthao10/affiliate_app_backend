@@ -1,8 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { users } = require('../models/mysql');
-const { roles } = require('../models/mysql');
-const { user_role } = require('../models/mysql');
+const Sequelize = require('sequelize')
+const { users, influencer, roles, user_role } = require('../models/mysql');
 const logger = require('../utils/logger');
 const validator = require('validator');
 require('dotenv').config();
@@ -175,8 +174,103 @@ const adminLogin = async (req, res) => {
     }
 };
 
-module.exports = {
-    registerUser,
-    loginUser,
-    adminLogin
+const kolLogin = async (req, res) => {
+    try {
+        const { identifier, password } = req.body;
+
+        if (!identifier || !password) {
+            return res.json({
+                success: false,
+                message: "Login identifier and password are required"
+            });
+        }
+
+        // Find user with influencer role and influencer data
+        const user = await users.findOne({
+            where: {
+                [Sequelize.Op.or]: [
+                    { username: identifier },
+                    { email: identifier },
+                    { phone_num: identifier }
+                ]
+            },
+            include: [
+                {
+                    model: influencer,
+                    as: 'influencer',
+                    required: true
+                },
+                {
+                    model: roles,
+                    as: 'role_id_roles',
+                    through: {
+                        model: user_role,
+                        attributes: []
+                    },
+                    where: { role_name: 'influencer' },
+                    required: true
+                }
+            ]
+        });
+
+        if (!user) {
+            return res.json({
+                success: false,
+                message: "Invalid credentials or not an influencer account"
+            });
+        }
+
+        // Check if account is active
+        if (user.status !== 'active') {
+            return res.json({
+                success: false,
+                message: "Your account is not active. Please contact support."
+            });
+        }
+
+        // Check influencer status
+        if (user.influencer.status !== 'active') {
+            return res.json({
+                success: false,
+                message: `Your influencer account is ${user.influencer.status}. Please contact support.`
+            });
+        }
+
+        // Verify password
+        const isMatch = await bcrypt.compare(password, user.password_hash);
+        if (!isMatch) {
+            return res.json({
+                success: false,
+                message: "Invalid credentials"
+            });
+        }
+
+        // Generate token
+        const token = createToken(user.user_id);
+
+        // Return success response
+        return res.json({
+            success: true,
+            token,
+            user: {
+                id: user.user_id,
+                username: user.username,
+                name: user.first_name + ' ' + user.last_name,
+                email: user.email,
+                phone: user.phone_num,
+                influencer_id: user.influencer.influencer_id,
+                influencer_status: user.influencer.status,
+                tier_id: user.influencer.tier_id
+            }
+        });
+
+    } catch (error) {
+        logger.error(`KOL Login error: ${error.message}`, { stack: error.stack });
+        return res.json({
+            success: false,
+            message: "Login failed. Please try again."
+        });
+    }
 };
+
+module.exports = { registerUser, loginUser, adminLogin, kolLogin };
