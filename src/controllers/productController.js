@@ -1,4 +1,4 @@
-const { product,order,order_item, product_inventory, product_image, category, Sequelize } = require('../models/mysql');
+const { product, order, order_item, product_inventory, product_image, category, Sequelize } = require('../models/mysql');
 const logger = require('../utils/logger');
 const fs = require('fs');
 const path = require('path');
@@ -198,9 +198,10 @@ exports.listProducts = async (req, res) => {
                 sizes: availableSizes,
                 in_stock: !product.out_of_stock,
                 reviews_count: product.reviews_count,
+                commission_rate: product.commission_rate,
                 created_at: product.creation_at,
                 updated_at: product.modified_at,
-                small_image:product.small_image
+                small_image: product.small_image
             };
         });
 
@@ -339,7 +340,7 @@ exports.listBestSellers = async (req, res) => {
                 'product.subCategory_id'
             ],
             order: [[Sequelize.literal('total_quantity_sold'), 'DESC']]
-            
+
         });
 
         // Format lại dữ liệu để phù hợp với frontend
@@ -422,259 +423,259 @@ exports.listBestSellers = async (req, res) => {
 // productController.js
 exports.filterProducts = async (req, res) => {
     try {
-      const {
-        page = 1,
-        limit = 10,
-        search = '',
-        category_id, // Sẽ nhận dạng như "2,3" nếu có nhiều category
-        subCategory,
-        sort_by = 'creation_at',
-        sort_order = 'DESC',
-        min_price,
-        max_price,
-        in_stock,
-      } = req.query;
-  
-      // Build filter conditions
-      const whereConditions = {};
-  
-      // Search in name and description
-      if (search) {
-        whereConditions[Op.or] = [
-          { name: { [Op.like]: `%${search}%` } },
-          { description: { [Op.like]: `%${search}%` } },
-        ];
-      }
-  
-      // Filter by category (hỗ trợ nhiều category_id)
-      if (category_id) {
-        const categoryIds = category_id.split(',').map((id) => parseInt(id));
-        whereConditions.category_id = { [Op.in]: categoryIds };
-      }
-  
-      // Filter by subCategory
-      if (subCategory) {
-        const subCategories = subCategory.split(',');
-        const subCategoryIds = [];
-        subCategories.forEach((subCat) => {
-          switch (subCat) {
-            case 'Topwear':
-              subCategoryIds.push(5, 9, 13); // Topwear của Men, Women, Kids
-              break;
-            case 'Bottomwear':
-              subCategoryIds.push(6, 10, 14); // Bottomwear của Men, Women, Kids
-              break;
-            case 'Winterwear':
-              subCategoryIds.push(7, 11, 15); // Winterwear của Men, Women, Kids
-              break;
-            case 'Dress':
-              subCategoryIds.push(8, 12, 16); // Dress của Men, Women, Kids
-              break;
-          }
+        const {
+            page = 1,
+            limit = 10,
+            search = '',
+            category_id, // Sẽ nhận dạng như "2,3" nếu có nhiều category
+            subCategory,
+            sort_by = 'creation_at',
+            sort_order = 'DESC',
+            min_price,
+            max_price,
+            in_stock,
+        } = req.query;
+
+        // Build filter conditions
+        const whereConditions = {};
+
+        // Search in name and description
+        if (search) {
+            whereConditions[Op.or] = [
+                { name: { [Op.like]: `%${search}%` } },
+                { description: { [Op.like]: `%${search}%` } },
+            ];
+        }
+
+        // Filter by category (hỗ trợ nhiều category_id)
+        if (category_id) {
+            const categoryIds = category_id.split(',').map((id) => parseInt(id));
+            whereConditions.category_id = { [Op.in]: categoryIds };
+        }
+
+        // Filter by subCategory
+        if (subCategory) {
+            const subCategories = subCategory.split(',');
+            const subCategoryIds = [];
+            subCategories.forEach((subCat) => {
+                switch (subCat) {
+                    case 'Topwear':
+                        subCategoryIds.push(5, 9, 13); // Topwear của Men, Women, Kids
+                        break;
+                    case 'Bottomwear':
+                        subCategoryIds.push(6, 10, 14); // Bottomwear của Men, Women, Kids
+                        break;
+                    case 'Winterwear':
+                        subCategoryIds.push(7, 11, 15); // Winterwear của Men, Women, Kids
+                        break;
+                    case 'Dress':
+                        subCategoryIds.push(8, 12, 16); // Dress của Men, Women, Kids
+                        break;
+                }
+            });
+            if (subCategoryIds.length > 0) {
+                whereConditions.subCategory_id = { [Op.in]: subCategoryIds };
+            }
+        }
+
+        // Filter by stock status
+        if (in_stock !== undefined) {
+            whereConditions.out_of_stock = in_stock === 'true' ? false : true;
+        }
+
+        // Prepare inventory filters for price range
+        let inventoryFilters = {};
+        if (min_price !== undefined || max_price !== undefined) {
+            if (min_price !== undefined) {
+                inventoryFilters.price = { ...inventoryFilters.price, [Op.gte]: min_price };
+            }
+            if (max_price !== undefined) {
+                inventoryFilters.price = { ...inventoryFilters.price, [Op.lte]: max_price };
+            }
+        }
+
+        // Calculate pagination
+        const offset = (page - 1) * limit;
+
+        // Get total product count for pagination
+        const totalProductsCount = await product.count({ where: whereConditions });
+
+        // Validate sort parameters
+        const validSortFields = ['name', 'creation_at', 'modified_at', 'reviews_count'];
+        const sortField = validSortFields.includes(sort_by) ? sort_by : 'creation_at';
+        const sortDirection = sort_order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+        // First, get all subCategory_id values from products
+        const productsWithSubCatId = await product.findAll({
+            where: whereConditions,
+            attributes: ['subCategory_id'],
+            raw: true,
         });
+
+        // Extract unique subCategory_id values
+        const subCategoryIds = [...new Set(productsWithSubCatId
+            .map((p) => p.subCategory_id)
+            .filter((id) => id !== null && id !== undefined))];
+
+        // Fetch subcategory data
+        let subCategories = [];
         if (subCategoryIds.length > 0) {
-          whereConditions.subCategory_id = { [Op.in]: subCategoryIds };
+            subCategories = await category.findAll({
+                where: {
+                    category_id: {
+                        [Op.in]: subCategoryIds,
+                    },
+                },
+                attributes: ['category_id', 'display_text'],
+                raw: true,
+            });
         }
-      }
-  
-      // Filter by stock status
-      if (in_stock !== undefined) {
-        whereConditions.out_of_stock = in_stock === 'true' ? false : true;
-      }
-  
-      // Prepare inventory filters for price range
-      let inventoryFilters = {};
-      if (min_price !== undefined || max_price !== undefined) {
-        if (min_price !== undefined) {
-          inventoryFilters.price = { ...inventoryFilters.price, [Op.gte]: min_price };
-        }
-        if (max_price !== undefined) {
-          inventoryFilters.price = { ...inventoryFilters.price, [Op.lte]: max_price };
-        }
-      }
-  
-      // Calculate pagination
-      const offset = (page - 1) * limit;
-  
-      // Get total product count for pagination
-      const totalProductsCount = await product.count({ where: whereConditions });
-  
-      // Validate sort parameters
-      const validSortFields = ['name', 'creation_at', 'modified_at', 'reviews_count'];
-      const sortField = validSortFields.includes(sort_by) ? sort_by : 'creation_at';
-      const sortDirection = sort_order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
-  
-      // First, get all subCategory_id values from products
-      const productsWithSubCatId = await product.findAll({
-        where: whereConditions,
-        attributes: ['subCategory_id'],
-        raw: true,
-      });
-  
-      // Extract unique subCategory_id values
-      const subCategoryIds = [...new Set(productsWithSubCatId
-        .map((p) => p.subCategory_id)
-        .filter((id) => id !== null && id !== undefined))];
-  
-      // Fetch subcategory data
-      let subCategories = [];
-      if (subCategoryIds.length > 0) {
-        subCategories = await category.findAll({
-          where: {
-            category_id: {
-              [Op.in]: subCategoryIds,
-            },
-          },
-          attributes: ['category_id', 'display_text'],
-          raw: true,
+
+        // Create a mapping of subCategory_id values to their display text
+        const subCategoryMap = {};
+        subCategories.forEach((sc) => {
+            subCategoryMap[sc.category_id] = sc.display_text;
         });
-      }
-  
-      // Create a mapping of subCategory_id values to their display text
-      const subCategoryMap = {};
-      subCategories.forEach((sc) => {
-        subCategoryMap[sc.category_id] = sc.display_text;
-      });
-  
-      // Get products with filters, sorting, and pagination
-      const products = await product.findAll({
-        where: whereConditions,
-        attributes: [
-          'product_id',
-          'name',
-          'description',
-          'sku',
-          'small_image',
-          'category_id',
-          'subCategory_id',
-          'reviews_count',
-          'out_of_stock',
-          'commission_rate',
-          'creation_at',
-          'modified_at',
-        ],
-        include: [
-          {
-            model: category,
-            as: 'category',
-            attributes: ['category_id', 'display_text'],
-          },
-          {
-            model: product_image,
-            as: 'product_images',
-            attributes: ['image_id', 'image', 'alt'],
-            required: false,
-          },
-          {
-            model: product_inventory,
-            as: 'product_inventories',
-            attributes: ['inventory_id', 'size', 'price', 'quantity'],
-            where: Object.keys(inventoryFilters).length > 0 ? inventoryFilters : undefined,
-            required: Object.keys(inventoryFilters).length > 0,
-          },
-        ],
-        order: [[sortField, sortDirection]],
-        limit: parseInt(limit, 10),
-        offset: offset,
-      });
-  
-      // Format the response
-      const formattedProducts = products.map((product) => {
-        let images = [];
-        if (product.product_images && product.product_images.length > 0) {
-          images = product.product_images.map((img) => ({
-            id: img.image_id,
-            url: img.image,
-            alt: img.alt || product.name,
-          }));
-        } else if (product.small_image) {
-          images = [
-            {
-              id: null,
-              url: product.small_image,
-              alt: product.name,
+
+        // Get products with filters, sorting, and pagination
+        const products = await product.findAll({
+            where: whereConditions,
+            attributes: [
+                'product_id',
+                'name',
+                'description',
+                'sku',
+                'small_image',
+                'category_id',
+                'subCategory_id',
+                'reviews_count',
+                'out_of_stock',
+                'commission_rate',
+                'creation_at',
+                'modified_at',
+            ],
+            include: [
+                {
+                    model: category,
+                    as: 'category',
+                    attributes: ['category_id', 'display_text'],
+                },
+                {
+                    model: product_image,
+                    as: 'product_images',
+                    attributes: ['image_id', 'image', 'alt'],
+                    required: false,
+                },
+                {
+                    model: product_inventory,
+                    as: 'product_inventories',
+                    attributes: ['inventory_id', 'size', 'price', 'quantity'],
+                    where: Object.keys(inventoryFilters).length > 0 ? inventoryFilters : undefined,
+                    required: Object.keys(inventoryFilters).length > 0,
+                },
+            ],
+            order: [[sortField, sortDirection]],
+            limit: parseInt(limit, 10),
+            offset: offset,
+        });
+
+        // Format the response
+        const formattedProducts = products.map((product) => {
+            let images = [];
+            if (product.product_images && product.product_images.length > 0) {
+                images = product.product_images.map((img) => ({
+                    id: img.image_id,
+                    url: img.image,
+                    alt: img.alt || product.name,
+                }));
+            } else if (product.small_image) {
+                images = [
+                    {
+                        id: null,
+                        url: product.small_image,
+                        alt: product.name,
+                    },
+                ];
+            } else {
+                images = [
+                    {
+                        id: null,
+                        url: '/images/placeholder-product.jpg',
+                        alt: 'No image available',
+                    },
+                ];
+            }
+
+            let minPrice = null;
+            let maxPrice = null;
+            const availableSizes = [];
+            if (product.product_inventories && product.product_inventories.length > 0) {
+                product.product_inventories.forEach((item) => {
+                    if (item.size && !availableSizes.includes(item.size)) {
+                        availableSizes.push(item.size);
+                    }
+                    if (minPrice === null || item.price < minPrice) {
+                        minPrice = item.price;
+                    }
+                    if (maxPrice === null || item.price > maxPrice) {
+                        maxPrice = item.price;
+                    }
+                });
+            }
+
+            let subCategoryData = null;
+            if (product.subCategory_id) {
+                subCategoryData = {
+                    id: product.subCategory_id,
+                    name: subCategoryMap[product.subCategory_id] || `Category ${product.subCategory_id}`,
+                };
+            }
+
+            return {
+                id: product.product_id,
+                name: product.name,
+                description: product.description,
+                sku: product.sku,
+                category: {
+                    id: product.category?.category_id,
+                    name: product.category?.display_text,
+                },
+                subCategory: subCategoryData,
+                images: images,
+                price: {
+                    min: minPrice,
+                    max: maxPrice,
+                    range: minPrice !== maxPrice,
+                },
+                sizes: availableSizes,
+                in_stock: !product.out_of_stock,
+                reviews_count: product.reviews_count,
+                created_at: product.creation_at,
+                updated_at: product.modified_at,
+                small_image: product.small_image,
+            };
+        });
+
+        res.status(200).json({
+            success: true,
+            products: formattedProducts,
+            pagination: {
+                total: totalProductsCount,
+                page: parseInt(page, 10),
+                limit: parseInt(limit, 10),
+                pages: Math.ceil(totalProductsCount / limit),
             },
-          ];
-        } else {
-          images = [
-            {
-              id: null,
-              url: '/images/placeholder-product.jpg',
-              alt: 'No image available',
-            },
-          ];
-        }
-  
-        let minPrice = null;
-        let maxPrice = null;
-        const availableSizes = [];
-        if (product.product_inventories && product.product_inventories.length > 0) {
-          product.product_inventories.forEach((item) => {
-            if (item.size && !availableSizes.includes(item.size)) {
-              availableSizes.push(item.size);
-            }
-            if (minPrice === null || item.price < minPrice) {
-              minPrice = item.price;
-            }
-            if (maxPrice === null || item.price > maxPrice) {
-              maxPrice = item.price;
-            }
-          });
-        }
-  
-        let subCategoryData = null;
-        if (product.subCategory_id) {
-          subCategoryData = {
-            id: product.subCategory_id,
-            name: subCategoryMap[product.subCategory_id] || `Category ${product.subCategory_id}`,
-          };
-        }
-  
-        return {
-          id: product.product_id,
-          name: product.name,
-          description: product.description,
-          sku: product.sku,
-          category: {
-            id: product.category?.category_id,
-            name: product.category?.display_text,
-          },
-          subCategory: subCategoryData,
-          images: images,
-          price: {
-            min: minPrice,
-            max: maxPrice,
-            range: minPrice !== maxPrice,
-          },
-          sizes: availableSizes,
-          in_stock: !product.out_of_stock,
-          reviews_count: product.reviews_count,
-          created_at: product.creation_at,
-          updated_at: product.modified_at,
-          small_image: product.small_image,
-        };
-      });
-  
-      res.status(200).json({
-        success: true,
-        products: formattedProducts,
-        pagination: {
-          total: totalProductsCount,
-          page: parseInt(page, 10),
-          limit: parseInt(limit, 10),
-          pages: Math.ceil(totalProductsCount / limit),
-        },
-      });
+        });
     } catch (error) {
-      logger.error(`Error filtering products: ${error.message}`, { stack: error.stack });
-      res.status(500).json({
-        success: false,
-        message: 'Failed to fetch products',
-        error: error.message,
-      });
+        logger.error(`Error filtering products: ${error.message}`, { stack: error.stack });
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch products',
+            error: error.message,
+        });
     }
-  };
-  exports.listAll = async (req, res) => {
+};
+exports.listAll = async (req, res) => {
     try {
         const {
             search = '',
@@ -1116,7 +1117,7 @@ exports.getProduct = async (req, res) => {
             reviews_count: productData.reviews_count,
             created_at: productData.creation_at,
             updated_at: productData.modified_at,
-            small_image:productData.small_image
+            small_image: productData.small_image
         };
 
         res.status(200).json({
