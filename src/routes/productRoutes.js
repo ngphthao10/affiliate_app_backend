@@ -6,7 +6,7 @@ const {
     updateProduct,
     deleteProduct,
     deleteProductImage,
-    listBestSellers,filterProducts
+    listBestSellers,filterProducts,listAll
 } = require('../controllers/productController');
 const upload = require('../middlewares/multer');
 const adminAuth = require('../middlewares/adminAuth');
@@ -15,10 +15,11 @@ const router = express.Router();
 
 // All routes are protected with adminAuth
 router.get('/list', listProducts);
-router.get('/details/:id', adminAuth, getProduct);
+router.get('/details/:id', getProduct);
 router.get('/edit/:id', adminAuth, getProduct);  // Uses same handler as details
 router.get('/best-sellers', listBestSellers);
 router.get('/filterProducts', filterProducts);
+router.get('/listAll',listAll)
 router.post(
     '/add',
     adminAuth,
