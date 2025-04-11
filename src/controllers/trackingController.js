@@ -2,11 +2,6 @@ const { influencer_affiliate_link, product, influencer } = require('../models/my
 const mongoose = require('mongoose');
 const logger = require('../utils/logger');
 
-/**
- * Tracks affiliate link clicks and redirects to the product page
- * @route GET /api/track/:linkId
- * @access Public
- */
 exports.trackAffiliateLink = async (req, res) => {
     try {
         const { token } = req.params;
@@ -18,7 +13,6 @@ exports.trackAffiliateLink = async (req, res) => {
             });
         }
 
-        // Split the token to get the data and signature parts
         const [encodedData, receivedSignature] = token.split('.');
 
         // Decode the data part
