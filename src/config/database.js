@@ -10,6 +10,7 @@ const mysqlConfig = {
     password: process.env.MYSQL_PASSWORD || 'password',
     database: process.env.MYSQL_DATABASE || 'ecommerce_db',
     dialect: 'mysql',
+    timezone: '+07:00',
     logging: process.env.NODE_ENV === 'development' ? (msg) => logger.debug(msg) : false,
     pool: {
         max: 10,

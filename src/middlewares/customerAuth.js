@@ -21,7 +21,7 @@ const customerAuth = async (req, res, next) => {
         if (!isCustomer) return next('not_customer');
 
         req.user = user;
-        req.userId = user.user_id;
+        req.user_id = user.user_id;
         req.roles = roleList;
         return next(); // success
     } catch (error) {

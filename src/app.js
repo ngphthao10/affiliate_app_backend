@@ -17,7 +17,7 @@ const kolTierRoutes = require('./routes/kolTierRoutes');
 const kolRoutes = require('./routes/kolRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
-
+const cartRoutes = require('./routes/cartRoutes');
 const kolPayoutRoutes = require('./routes/kolPayoutRoutes');
 const reviewRoutes = require('./routes/reviewRoutes')
 const commissionRoutes = require('./routes/KolRoutes/commissionRoutes');
@@ -63,6 +63,7 @@ app.use('/api/track', trackingRoutes);
 app.use('/api/commission', commissionRoutes);
 app.use('/api/kol-stats', kolStatsRoutes);
 app.use('/api/kol-report', kolReportRoutes);
+app.use('/api/cart', cartRoutes);
 app.use(errorHandler);
 
 app.use((req, res) => {
