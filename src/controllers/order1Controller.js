@@ -7,7 +7,7 @@ const Op = Sequelize.Op;
 
 // Global variables
 const currency = 'usd';
-const deliveryCharge = 10;
+const deliveryCharge = 1;
 
 // Gateway initialize
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -285,7 +285,7 @@ const placeOrderStripe = async (req, res) => {
       await createOrderItems(newOrder.order_id, items);
   
       // Tạo bản ghi trong bảng payment
-      await createPayment(newOrder.order_id, amount, 'Stripe');
+      await createPayment(newOrder.order_id, amount, 'stripe');
   
       // Chuẩn bị line items cho Stripe
       const line_items = items.map((item) => ({
@@ -312,8 +312,8 @@ const placeOrderStripe = async (req, res) => {
   
       // Tạo phiên Stripe
       const session = await stripe.checkout.sessions.create({
-        success_url: `${origin}/verify?success=true&orderId=${newOrder.order_id}`,
-        cancel_url: `${origin}/verify?success=false&orderId=${newOrder.order_id}`,
+        success_url: `${origin}/verify?success=true&orderId=${newOrder.order_id}&user_id=${userId}`,
+      cancel_url: `${origin}/verify?success=false&orderId=${newOrder.order_id}&user_id=${userId}`,
         line_items,
         mode: 'payment',
       });
@@ -335,20 +335,28 @@ const placeOrderStripe = async (req, res) => {
 // Verify Stripe
 const verifyStripe = async (req, res) => {
   try {
-    const { orderId, success, userId } = req.body;
+    // Lấy orderId, success và user_id từ req.query
+    const { orderId, success, user_id } = req.query;
 
-    if (!orderId || !userId || success === undefined) {
+    // Kiểm tra dữ liệu đầu vào
+    if (!orderId || !user_id || success === undefined) {
       return res.status(400).json({
         success: false,
-        message: 'Missing required fields: orderId, userId, and success are required',
+        message: 'Missing required fields: orderId, user_id, and success are required',
       });
     }
+    // Tìm đơn hàng và kiểm tra xem nó có thuộc về user_id không
+    const orderDetails = await order.findOne({
+      where: {
+        order_id: orderId,
+        user_id: user_id, // Đảm bảo đơn hàng thuộc về user_id
+      },
+    });
 
-    const orderDetails = await order.findByPk(orderId);
     if (!orderDetails) {
       return res.status(404).json({
         success: false,
-        message: 'Order not found',
+        message: 'Order not found or does not belong to this user',
       });
     }
 
@@ -370,8 +378,8 @@ const verifyStripe = async (req, res) => {
         modified_at: new Date(),
       });
 
-      // Xóa giỏ hàng
-      await clearCart(userId);
+      // Xóa giỏ hàng của người dùng
+      await clearCart(user_id);
 
       res.status(200).json({
         success: true,
@@ -398,7 +406,6 @@ const verifyStripe = async (req, res) => {
     });
   }
 };
-
 // Placing orders using MoMo Method
 const placeOrderMomo = async (req, res) => {
   try {
@@ -420,40 +427,45 @@ const placeOrderMomo = async (req, res) => {
       });
     }
 
-    // Tính tổng tiền
-    const amount = items.reduce((total, item) => total + (item.price * item.quantity), 0) + deliveryCharge;
+    // Tính tổng tiền bằng USD và làm tròn
+    const amountInUSD = Math.round(items.reduce((total, item) => total + (item.price * item.quantity), 0) + deliveryCharge);
+
+    // Chuyển sang VND để gửi cho MoMo
+   // 1 USD = 25,000 VND
+    const amountInVND = amountInUSD * process.env.EXCHANGE_RATE;
 
     // Kiểm tra hoặc tạo địa chỉ
     const shippingAddressId = await ensureUserAddress(userId, address);
 
-    // Tạo đơn hàng
+    // Tạo đơn hàng (lưu total bằng USD)
     const newOrder = await order.create({
       user_id: userId,
-      total: amount,
+      total: amountInUSD, // Lưu bằng USD
       status: 'pending',
       shipping_address_id: shippingAddressId,
-      
     });
     const creationTime = new Date();
     console.log('Creation time before saving:', creationTime.toString());
+
     // Tạo các mục trong order_item
     await createOrderItems(newOrder.order_id, items);
 
-    // Tạo bản ghi trong bảng payment
-    await createPayment(newOrder.order_id, amount, 'momo');
+    // Tạo bản ghi trong bảng payment (lưu amount bằng USD)
+    await createPayment(newOrder.order_id, amountInUSD, 'momo');
 
     // Tạo requestId và orderId
     const partnerCode = process.env.MOMO_PARTNER_CODE;
-    const orderId = newOrder.order_id.toString();
+    const orderId = `${newOrder.order_id}-${Date.now()}`; // Tạo orderId duy nhất
     const requestId = partnerCode + new Date().getTime();
 
     const orderInfo = `Payment for order ${orderId}`;
     const extraData = '';
-    const requestType = 'payWithMethod';
+    const requestType = 'captureWallet';
     const autoCapture = true;
     const lang = 'vi';
 
-    const rawSignature = `accessKey=${process.env.MOMO_ACCESS_KEY}&amount=${amount}&extraData=${extraData}&ipnUrl=${process.env.MOMO_NOTIFY_URL}&orderId=${orderId}&orderInfo=${orderInfo}&partnerCode=${partnerCode}&redirectUrl=${process.env.MOMO_RETURN_URL}&requestId=${requestId}&requestType=${requestType}`;
+    // Tạo signature với amountInVND
+    const rawSignature = `accessKey=${process.env.MOMO_ACCESS_KEY}&amount=${amountInVND}&extraData=${extraData}&ipnUrl=${process.env.MOMO_NOTIFY_URL}&orderId=${orderId}&orderInfo=${orderInfo}&partnerCode=${partnerCode}&redirectUrl=${process.env.MOMO_RETURN_URL}&requestId=${requestId}&requestType=${requestType}`;
     const signature = createSignature(rawSignature);
 
     const requestBody = {
@@ -461,7 +473,7 @@ const placeOrderMomo = async (req, res) => {
       partnerName: "Test",
       storeId: "MomoTestStore",
       requestId: requestId,
-      amount: amount,
+      amount: amountInVND,
       orderId: orderId,
       orderInfo: orderInfo,
       redirectUrl: process.env.MOMO_RETURN_URL,
@@ -473,6 +485,8 @@ const placeOrderMomo = async (req, res) => {
       orderGroupId: '',
       signature: signature,
     };
+
+    console.log('MoMo requestBody:', JSON.stringify(requestBody, null, 2));
 
     const response = await axios.post('https://test-payment.momo.vn/v2/gateway/api/create', requestBody, {
       headers: { 'Content-Type': 'application/json' },
@@ -500,7 +514,6 @@ const placeOrderMomo = async (req, res) => {
     });
   }
 };
-
 // Verify MoMo
 const verifyMomo = async (req, res) => {
   try {
