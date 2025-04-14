@@ -24,6 +24,7 @@ const commissionRoutes = require('./routes/KolRoutes/commissionRoutes');
 const trackingRoutes = require('./routes/trackingRoutes');
 const kolStatsRoutes = require('./routes/KolRoutes/kolStatsRoutes')
 const kolReportRoutes = require('./routes/KolRoutes/kolReportRoutes')
+const order1Routes =require('./routes/order1Routes');
 // Create Express app
 const app = express();
 app.use(cookieParser());
@@ -64,6 +65,7 @@ app.use('/api/commission', commissionRoutes);
 app.use('/api/kol-stats', kolStatsRoutes);
 app.use('/api/kol-report', kolReportRoutes);
 app.use('/api/cart', cartRoutes);
+app.use('/api/order1', order1Routes);
 app.use(errorHandler);
 
 app.use((req, res) => {

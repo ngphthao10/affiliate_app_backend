@@ -1,5 +1,5 @@
 const winston = require('winston');
-
+const moment = require('moment-timezone');
 // Define log format
 const logFormat = winston.format.combine(
     winston.format.timestamp(),

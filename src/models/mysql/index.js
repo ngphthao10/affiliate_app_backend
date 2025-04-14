@@ -15,7 +15,8 @@ const sequelize = new Sequelize(
         port: mysqlConfig.port,
         dialect: mysqlConfig.dialect,
         logging: mysqlConfig.logging,
-        pool: mysqlConfig.pool
+        pool: mysqlConfig.pool,
+        timezone:mysqlConfig.timezone
     }
 );
 

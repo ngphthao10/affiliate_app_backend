@@ -10,14 +10,19 @@ const mysqlConfig = {
     password: process.env.MYSQL_PASSWORD || 'password',
     database: process.env.MYSQL_DATABASE || 'ecommerce_db',
     dialect: 'mysql',
-    timezone: '+07:00',
     logging: process.env.NODE_ENV === 'development' ? (msg) => logger.debug(msg) : false,
     pool: {
         max: 10,
         min: 0,
         acquire: 30000,
         idle: 10000
-    }
+    },
+    timezone: '+07:00', // Múi giờ khi lưu dữ liệu
+    dialectOptions: {
+        timezone: '+07:00', // Múi giờ khi kết nối đến MySQL
+        dateStrings: true, // Lưu thời gian dưới dạng chuỗi để tránh chuyển đổi
+        typeCast: true, // Đảm bảo Sequelize không tự động chuyển đổi thời gian
+    },
 };
 
 // MongoDB configuration

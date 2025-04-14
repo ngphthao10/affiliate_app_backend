@@ -6,7 +6,8 @@ const logger = require('./src/utils/logger');
 const env = require('./src/config/env');
 
 const PORT = env.port;
-
+const creationTime = new Date();
+console.log('Creation time before saving:', creationTime.toString());
 // Start the server
 const startServer = async () => {
     try {
