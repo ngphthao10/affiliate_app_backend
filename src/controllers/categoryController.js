@@ -56,7 +56,6 @@ exports.getSubCategories = async (req, res) => {
 
 exports.getAllSubCategories = async (req, res) => {
     try {
-        // Get all subcategories (those with a parent_category_id)
         const subCategories = await category.findAll({
             where: {
                 parent_category_id: { [Op.not]: null }
@@ -87,7 +86,6 @@ exports.createCategory = async (req, res) => {
     try {
         const { display_text, description } = req.body;
 
-        // Validate required fields
         if (!display_text) {
             return res.status(400).json({
                 success: false,
@@ -95,7 +93,6 @@ exports.createCategory = async (req, res) => {
             });
         }
 
-        // Check if category with the same name already exists
         const existingCategory = await category.findOne({
             where: { display_text, parent_category_id: null }
         });
@@ -107,7 +104,6 @@ exports.createCategory = async (req, res) => {
             });
         }
 
-        // Create the category
         const newCategory = await category.create({
             display_text,
             description,
@@ -133,7 +129,6 @@ exports.createSubCategory = async (req, res) => {
     try {
         const { display_text, description, parent_category_id } = req.body;
 
-        // Validate required fields
         if (!display_text || !parent_category_id) {
             return res.status(400).json({
                 success: false,
@@ -141,7 +136,6 @@ exports.createSubCategory = async (req, res) => {
             });
         }
 
-        // Check if parent category exists
         const parentCategory = await category.findByPk(parent_category_id);
         if (!parentCategory) {
             return res.status(404).json({
@@ -150,7 +144,6 @@ exports.createSubCategory = async (req, res) => {
             });
         }
 
-        // Check if subcategory with the same name already exists under this parent
         const existingSubCategory = await category.findOne({
             where: {
                 display_text,
@@ -165,7 +158,6 @@ exports.createSubCategory = async (req, res) => {
             });
         }
 
-        // Create the subcategory
         const newSubCategory = await category.create({
             display_text,
             description,
@@ -191,7 +183,6 @@ exports.deleteCategory = async (req, res) => {
     try {
         const { id } = req.params;
 
-        // Check if the category exists
         const categoryToDelete = await category.findByPk(id);
         if (!categoryToDelete) {
             return res.status(404).json({
@@ -200,7 +191,6 @@ exports.deleteCategory = async (req, res) => {
             });
         }
 
-        // Check if category has subcategories
         const hasSubCategories = await category.findOne({
             where: { parent_category_id: id }
         });
@@ -212,7 +202,6 @@ exports.deleteCategory = async (req, res) => {
             });
         }
 
-        // Check if category has products
         const hasProducts = await categoryToDelete.getProducts();
         if (hasProducts && hasProducts.length > 0) {
             return res.status(400).json({
@@ -221,7 +210,6 @@ exports.deleteCategory = async (req, res) => {
             });
         }
 
-        // Delete the category
         await categoryToDelete.destroy();
 
         return res.status(200).json({
@@ -242,7 +230,6 @@ exports.deleteSubCategory = async (req, res) => {
     try {
         const { id } = req.params;
 
-        // Check if the subcategory exists
         const subCategoryToDelete = await category.findByPk(id);
         if (!subCategoryToDelete) {
             return res.status(404).json({
@@ -251,7 +238,6 @@ exports.deleteSubCategory = async (req, res) => {
             });
         }
 
-        // Verify it's actually a subcategory
         if (!subCategoryToDelete.parent_category_id) {
             return res.status(400).json({
                 success: false,
@@ -259,7 +245,6 @@ exports.deleteSubCategory = async (req, res) => {
             });
         }
 
-        // Check if subcategory has products
         const hasProducts = await subCategoryToDelete.getProducts();
         if (hasProducts && hasProducts.length > 0) {
             return res.status(400).json({
@@ -268,7 +253,6 @@ exports.deleteSubCategory = async (req, res) => {
             });
         }
 
-        // Delete the subcategory
         await subCategoryToDelete.destroy();
 
         return res.status(200).json({

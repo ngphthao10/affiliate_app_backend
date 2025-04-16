@@ -14,7 +14,6 @@ const kolAuth = require('../middlewares/kolAuth')
 
 const router = express.Router();
 
-// Admin routes (all protected with adminAuth)
 router.get('/list', adminAuth, getPayouts);
 router.get('/export', adminAuth, exportPayoutReport);
 router.post('/generate', adminAuth, generatePayouts);

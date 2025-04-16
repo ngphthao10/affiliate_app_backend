@@ -20,7 +20,6 @@ exports.getDashboardStats = async (req, res) => {
         const startDate = start_date ? dayjs(start_date).startOf('day') : dayjs().subtract(7, 'day').startOf('day');
         const endDate = end_date ? dayjs(end_date).endOf('day') : dayjs().endOf('day');
 
-        // Get total revenue, orders and average order value
         const orderStats = await order.findAll({
             where: {
                 creation_at: {
@@ -37,7 +36,6 @@ exports.getDashboardStats = async (req, res) => {
             raw: true
         });
 
-        // Get previous period stats for comparison
         const prevStartDate = startDate.subtract(startDate.diff(endDate, 'day'), 'day');
         const prevEndDate = startDate.subtract(1, 'millisecond');
 
@@ -57,7 +55,6 @@ exports.getDashboardStats = async (req, res) => {
             raw: true
         });
 
-        // Calculate metrics and changes
         const totalRevenue = orderStats[0].total_revenue || 0;
         const prevRevenue = prevOrderStats[0].total_revenue || 0;
         const revenueChange = prevRevenue ? ((totalRevenue - prevRevenue) / prevRevenue) * 100 : 0;
@@ -70,7 +67,6 @@ exports.getDashboardStats = async (req, res) => {
         const prevAvgOrderValue = prevOrders ? prevRevenue / prevOrders : 0;
         const avgOrderChange = prevAvgOrderValue ? ((avgOrderValue - prevAvgOrderValue) / prevAvgOrderValue) * 100 : 0;
 
-        // Get total visitors (this would need to be implemented with actual analytics)
         const totalVisitors = 1000; // Placeholder
         const prevVisitors = 950; // Placeholder
         const conversionRate = totalVisitors ? (totalOrders / totalVisitors) * 100 : 0;
@@ -106,7 +102,6 @@ exports.getRevenueData = async (req, res) => {
         const startDate = start_date ? dayjs(start_date).startOf('day') : dayjs().subtract(7, 'day').startOf('day');
         const endDate = end_date ? dayjs(end_date).endOf('day') : dayjs().endOf('day');
 
-        // Get daily revenue and orders
         const dailyStats = await order.findAll({
             where: {
                 creation_at: {
@@ -210,7 +205,6 @@ exports.getKOLPerformance = async (req, res) => {
         const startDate = start_date ? dayjs(start_date).startOf('day') : dayjs().subtract(30, 'day').startOf('day');
         const endDate = end_date ? dayjs(end_date).endOf('day') : dayjs().endOf('day');
 
-        // Get basic KOL info
         const kolPerformance = await influencer.findAll({
             attributes: [
                 'influencer_id',
@@ -229,14 +223,12 @@ exports.getKOLPerformance = async (req, res) => {
             raw: true
         });
 
-        // Get detailed stats for each KOL
         const detailedStats = await Promise.all(
             kolPerformance.map(async (kol) => {
                 const displayName = kol.first_name && kol.last_name
                     ? `${kol.first_name} ${kol.last_name}`
                     : kol.name;
 
-                // Get clicks from MongoDB
                 const clicksData = await KolStats.aggregate([
                     {
                         $match: {
@@ -257,7 +249,6 @@ exports.getKOLPerformance = async (req, res) => {
 
                 const clicks = clicksData.length > 0 ? clicksData[0].total_clicks : 0;
 
-                // Get orders data from MySQL
                 const orderData = await order_item.findAll({
                     attributes: [
                         [Sequelize.fn('COUNT', Sequelize.fn('DISTINCT', Sequelize.col('order.order_id'))), 'orders_count'],
@@ -293,7 +284,7 @@ exports.getKOLPerformance = async (req, res) => {
 
                 const orders = parseInt(orderData[0]?.orders_count || 0);
                 const sales = parseFloat(orderData[0]?.total_sales || 0);
-                const commissionRate = 5; // Default 5% commission rate
+                const commissionRate = 5;
                 const commission = (sales * commissionRate) / 100;
 
                 return {
@@ -307,12 +298,12 @@ exports.getKOLPerformance = async (req, res) => {
             })
         );
 
-        // Sort by specified field and get top 5
+
         const sortedStats = [...detailedStats]
             .sort((a, b) => b[sort_by] - a[sort_by])
             .slice(0, 5);
 
-        // Calculate totals for top 5 KOLs
+
         const totals = sortedStats.reduce(
             (acc, kol) => ({
                 clicks: acc.clicks + kol.clicks,
@@ -348,7 +339,6 @@ exports.getCustomerStats = async (req, res) => {
         const startDate = start_date ? dayjs(start_date).startOf('day') : dayjs().subtract(7, 'day').startOf('day');
         const endDate = end_date ? dayjs(end_date).endOf('day') : dayjs().endOf('day');
 
-        // Get new vs returning customers
         const customerStats = await order.findAll({
             attributes: [
                 'user_id',
@@ -368,10 +358,8 @@ exports.getCustomerStats = async (req, res) => {
             raw: true
         });
 
-        // Calculate metrics
         const totalCustomers = customerStats.length;
 
-        // Check if first order is within the date range without using isBetween
         const newCustomers = customerStats.filter(c => {
             const firstOrderDate = dayjs(c.first_order);
             return firstOrderDate.isAfter(startDate) || firstOrderDate.isSame(startDate) &&
@@ -383,7 +371,6 @@ exports.getCustomerStats = async (req, res) => {
         const totalRevenue = customerStats.reduce((sum, c) => sum + parseFloat(c.total_spent || 0), 0);
         const averageOrderValue = totalCustomers > 0 ? totalRevenue / totalCustomers : 0;
 
-        // Get previous period stats for comparison
         const periodLength = endDate.diff(startDate, 'day');
         const prevEndDate = startDate.subtract(1, 'day');
         const prevStartDate = prevEndDate.subtract(periodLength, 'day');

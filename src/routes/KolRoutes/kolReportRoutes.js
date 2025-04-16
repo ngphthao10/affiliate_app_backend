@@ -3,13 +3,11 @@ const router = express.Router();
 const kolAuth = require('../../middlewares/kolAuth');
 const kolReportController = require('../../controllers/KolController/kolReportController');
 
-// Route handler
 router.get('/report/:influencerId', kolAuth, async (req, res) => {
     try {
         const { influencerId } = req.params;
         const { start_date, end_date, product_id, group_by } = req.query;
 
-        // Validate KOL access
         if (req.influencerId !== parseInt(influencerId)) {
             return res.status(403).json({
                 success: false,

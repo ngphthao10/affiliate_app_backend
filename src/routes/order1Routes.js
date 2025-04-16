@@ -12,13 +12,13 @@ orderRouter.post('/status', adminAuth, updateStatus);
 // Payment Features
 orderRouter.post('/place', authUser, placeOrder);
 orderRouter.post('/stripe', authUser, placeOrderStripe);
-orderRouter.post('/momo', authUser, placeOrderMomo); // Thay /razorpay thành /momo và placeOrderRazorpay thành placeOrderMomo
+orderRouter.post('/momo', authUser, placeOrderMomo);
 
 // User Feature 
 orderRouter.post('/userorders', authUser, userOrders);
 
 // Verify payment
 orderRouter.post('/verifyStripe', authUser, verifyStripe);
-orderRouter.post('/verifyMomo', authUser, verifyMomo); // Thay /verifyRazorpay thành /verifyMomo và verifyRazorpay thành verifyMomo
+orderRouter.post('/verifyMomo', authUser, verifyMomo);
 
-module.exports = orderRouter; // Sửa "module.exports = router" thành "module.exports = orderRouter" để đồng bộ với tên biến
+module.exports = orderRouter; 

@@ -19,7 +19,6 @@ exports.getKolDashboardStats = async (req, res) => {
         const { influencerId } = req.params;
         const { startDate, endDate } = req.query;
 
-        // Validate influencer ID
         if (!influencerId) {
             return res.status(400).json({
                 success: false,
@@ -27,7 +26,6 @@ exports.getKolDashboardStats = async (req, res) => {
             });
         }
 
-        // First get the influencer details to determine their tier
         const influencerData = await influencer.findOne({
             where: { influencer_id: influencerId },
             include: [{
@@ -44,10 +42,8 @@ exports.getKolDashboardStats = async (req, res) => {
             });
         }
 
-        // Get the KOL's tier commission rate bonus
         const tierCommissionRate = influencerData.tier?.commission_rate || 0;
 
-        // Set up date range filter
         const dateFilter = {};
         if (startDate && endDate) {
             dateFilter.date = {
@@ -56,7 +52,6 @@ exports.getKolDashboardStats = async (req, res) => {
             };
         }
 
-        // Get total clicks from MongoDB
         const clickStats = await KolAffiliateStats.aggregate([
             {
                 $match: {
@@ -72,7 +67,6 @@ exports.getKolDashboardStats = async (req, res) => {
             }
         ]);
 
-        // Get affiliate links for the influencer
         const affiliateLinks = await influencer_affiliate_link.findAll({
             where: {
                 influencer_id: influencerId
@@ -87,7 +81,6 @@ exports.getKolDashboardStats = async (req, res) => {
 
         const linkIds = affiliateLinks.map(link => link.link_id);
 
-        // Create a map of link_id to product_id for later use
         const linkToProductMap = {};
         affiliateLinks.forEach(link => {
             linkToProductMap[link.link_id] = {
@@ -98,7 +91,6 @@ exports.getKolDashboardStats = async (req, res) => {
             };
         });
 
-        // Get order statistics using Sequelize
         const orderStats = await order_item.findOne({
             attributes: [
                 [sequelize.fn('COUNT', sequelize.fn('DISTINCT', sequelize.col('order.order_id'))), 'total_orders'],
@@ -135,7 +127,6 @@ exports.getKolDashboardStats = async (req, res) => {
             raw: true
         });
 
-        // Get product performance stats
         const productStats = await order_item.findAll({
             attributes: [
                 'link_id',
@@ -174,7 +165,6 @@ exports.getKolDashboardStats = async (req, res) => {
             raw: true
         });
 
-        // Process product stats with product information
         const productPerformance = {};
 
         productStats.forEach(stat => {
@@ -200,7 +190,6 @@ exports.getKolDashboardStats = async (req, res) => {
             const totalSold = parseInt(stat.total_sold || 0);
             const totalRevenue = parseFloat(stat.total_revenue || 0);
 
-            // Calculate commission based on product commission rate + KOL tier bonus
             const productCommissionRate = productInfo.commission_rate || 0;
             const productCommission = totalRevenue * (productCommissionRate / 100);
             const tierCommission = totalRevenue * (tierCommissionRate / 100);
@@ -211,17 +200,14 @@ exports.getKolDashboardStats = async (req, res) => {
             productPerformance[productId].commission += totalCommission;
         });
 
-        // Convert to array and sort by total_sold
         const topProducts = Object.values(productPerformance)
             .sort((a, b) => b.total_sold - a.total_sold)
-            .slice(0, 5); // Get top 5
+            .slice(0, 5);
 
-        // Format response
         const totalSales = parseFloat(orderStats?.total_sales || 0);
         const totalOrders = parseInt(orderStats?.total_orders || 0);
         const totalQuantity = parseInt(orderStats?.total_quantity || 0);
 
-        // Calculate total commission across all products
         let totalCommission = 0;
         Object.values(productPerformance).forEach(product => {
             totalCommission += product.commission;
