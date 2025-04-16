@@ -460,7 +460,7 @@ const placeOrderMomo = async (req, res) => {
 
     const orderInfo = `Payment for order ${orderId}`;
     const extraData = '';
-    const requestType = 'captureWallet';
+    const requestType = 'payWithMethod';
     const autoCapture = true;
     const lang = 'vi';
 
