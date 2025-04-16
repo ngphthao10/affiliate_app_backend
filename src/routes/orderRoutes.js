@@ -9,7 +9,6 @@ const adminAuth = require('../middlewares/adminAuth');
 
 const router = express.Router();
 
-// All routes are protected with adminAuth
 router.get('/list', adminAuth, listOrders);
 router.get('/details/:id', adminAuth, getOrderDetails);
 router.put('/status/:id', adminAuth, updateOrderStatus);

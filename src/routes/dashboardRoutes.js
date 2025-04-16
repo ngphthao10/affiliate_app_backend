@@ -10,7 +10,6 @@ const adminAuth = require('../middlewares/adminAuth');
 
 const router = express.Router();
 
-// All routes are protected with adminAuth middleware
 router.get('/stats', adminAuth, getDashboardStats);
 router.get('/revenue', adminAuth, getRevenueData);
 router.get('/top-products', adminAuth, getTopProducts);

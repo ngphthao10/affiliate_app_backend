@@ -1,10 +1,8 @@
 const crypto = require('crypto');
 const mongoose = require('mongoose')
 exports.showTestPurchasePage = (req, res) => {
-    // Generate a nonce
     const nonce = crypto.randomBytes(16).toString('base64');
 
-    // Read affiliate info from cookies
     const affiliateLinkId = req.cookies.affiliate_link_id;
     const influencerId = req.cookies.influencer_id;
     const productId = req.cookies.product_id;
@@ -17,12 +15,12 @@ exports.showTestPurchasePage = (req, res) => {
             influencerId: influencerId,
             productId: productId
         },
-        nonce: nonce // Pass the nonce to the view
+        nonce: nonce
     });
 };
 
 exports.simulatePurchase = async (req, res) => {
-    // Read affiliate info from cookies
+
     const affiliateLinkId = req.cookies.affiliate_link_id;
     const influencerId = req.cookies.influencer_id;
     const productId = req.cookies.product_id;
@@ -35,10 +33,8 @@ exports.simulatePurchase = async (req, res) => {
     }
 
     try {
-        // Update successful purchases in MongoDB
         const KolAffiliateStats = mongoose.model('KolAffiliateStats');
 
-        // Find today's stats document
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
@@ -52,7 +48,7 @@ exports.simulatePurchase = async (req, res) => {
                 }
             },
             { $inc: { successful_purchases: 1 } },
-            { upsert: true } // Create if it doesn't exist
+            { upsert: true }
         );
 
         return res.json({

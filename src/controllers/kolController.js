@@ -10,21 +10,13 @@ const {
     sequelize
 } = require('../models/mysql');
 const logger = require('../utils/logger');
+const emailService = require('../services/emailService');
 const Op = Sequelize.Op;
 
 exports.listKOLs = async (req, res) => {
     try {
-        const {
-            page = 1,
-            limit = 10,
-            search = '',
-            status = 'all',
-            tier_id = 'all',
-            sort_by = 'modified_at',
-            sort_order = 'DESC'
-        } = req.query;
+        const { page = 1, limit = 10, search = '', status = 'all', tier_id = 'all', sort_by = 'modified_at', sort_order = 'DESC' } = req.query;
 
-        // Build where conditions
         const whereConditions = {};
 
         if (status === 'all') {
@@ -43,7 +35,6 @@ exports.listKOLs = async (req, res) => {
             whereConditions.tier_id = tier_id;
         }
 
-        // Build user search conditions
         const userSearchConditions = {};
         if (search) {
             userSearchConditions[Op.or] = [
@@ -54,10 +45,8 @@ exports.listKOLs = async (req, res) => {
             ];
         }
 
-        // Calculate pagination
         const offset = (page - 1) * limit;
 
-        // Get total count for pagination
         const totalCount = await influencer.count({
             where: whereConditions,
             include: [{
@@ -68,12 +57,10 @@ exports.listKOLs = async (req, res) => {
             }]
         });
 
-        // Validate sort parameters
         const validSortFields = ['username', 'email', 'tier', 'commission_rate', 'modified_at'];
         const sortField = validSortFields.includes(sort_by) ? sort_by : 'modified_at';
         const sortDirection = sort_order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
-        // Build sort options
         let order = [];
         if (sortField === 'username' || sortField === 'email') {
             order.push([{ model: users, as: 'user' }, sortField, sortDirection]);
@@ -83,7 +70,6 @@ exports.listKOLs = async (req, res) => {
             order.push([sortField, sortDirection]);
         }
 
-        // Calculate metrics using direct SQL for better performance
         const [totalSalesResults] = await sequelize.query(`
             SELECT 
                 i.influencer_id,
@@ -103,7 +89,6 @@ exports.listKOLs = async (req, res) => {
             return acc;
         }, {});
 
-        // Fetch KOLs with relations
         const kols = await influencer.findAll({
             where: whereConditions,
             include: [
@@ -129,7 +114,6 @@ exports.listKOLs = async (req, res) => {
             offset: offset
         });
 
-        // Format response with metrics
         const formattedKOLs = kols.map(kol => {
             const kolData = kol.get({ plain: true });
             const metrics = salesMetrics[kolData.influencer_id] || {
@@ -172,7 +156,6 @@ exports.getKOLDetails = async (req, res) => {
     try {
         const { id } = req.params;
 
-        // Get basic KOL info
         const kol = await influencer.findByPk(id, {
             include: [
                 {
@@ -200,7 +183,6 @@ exports.getKOLDetails = async (req, res) => {
             });
         }
 
-        // Get performance metrics using SQL for better performance
         const [metrics] = await sequelize.query(`
             SELECT 
                 ial.link_id,
@@ -220,7 +202,6 @@ exports.getKOLDetails = async (req, res) => {
             replacements: { influencerId: id }
         });
 
-        // Calculate total sales and commission
         let totalSales = 0;
         const recentTransactions = [];
 
@@ -235,7 +216,6 @@ exports.getKOLDetails = async (req, res) => {
             }
         });
 
-        // Get affiliate links
         const affiliateLinks = await influencer_affiliate_link.findAll({
             where: { influencer_id: id },
             attributes: ['link_id', 'affliate_link', 'created_at']
@@ -243,7 +223,6 @@ exports.getKOLDetails = async (req, res) => {
 
         const kolData = kol.get({ plain: true });
 
-        // Add performance metrics to the response
         const enhancedKOLData = {
             ...kolData,
             performance: {
@@ -276,7 +255,6 @@ exports.updateKOLStatus = async (req, res) => {
         const { id } = req.params;
         const { status, reason } = req.body;
 
-        // Validate status
         const validStatuses = ['active', 'suspended', 'banned'];
         if (!validStatuses.includes(status)) {
             return res.status(400).json({
@@ -285,8 +263,16 @@ exports.updateKOLStatus = async (req, res) => {
             });
         }
 
-        // Find KOL
-        const kol = await influencer.findByPk(id);
+        const kol = await influencer.findByPk(id, {
+            include: [
+                {
+                    model: users,
+                    as: 'user',
+                    attributes: ['username', 'email', 'first_name', 'last_name']
+                }
+            ]
+        });
+
         if (!kol) {
             return res.status(404).json({
                 success: false,
@@ -294,7 +280,6 @@ exports.updateKOLStatus = async (req, res) => {
             });
         }
 
-        // Validate status transition
         if (kol.status === status) {
             return res.status(400).json({
                 success: false,
@@ -302,7 +287,6 @@ exports.updateKOLStatus = async (req, res) => {
             });
         }
 
-        // Require reason for suspend and ban actions
         if ((status === 'suspended' || status === 'banned') && !reason) {
             return res.status(400).json({
                 success: false,
@@ -310,14 +294,21 @@ exports.updateKOLStatus = async (req, res) => {
             });
         }
 
-        // Update status
         await kol.update({
             status,
             status_reason: reason || null,
             modified_at: new Date()
         });
 
-        // Return updated KOL data
+        // Send email notification about status change
+        try {
+            await emailService.sendKolStatusUpdateEmail(kol.user, status, reason);
+            logger.info(`Status update email sent to KOL ${kol.user.email}`);
+        } catch (emailError) {
+            logger.error(`Failed to send status update email: ${emailError.message}`, { stack: emailError.stack });
+            // Continue with the response even if email fails
+        }
+
         const updatedKol = await influencer.findByPk(id, {
             include: [
                 {
@@ -331,7 +322,8 @@ exports.updateKOLStatus = async (req, res) => {
         res.status(200).json({
             success: true,
             message: `KOL has been ${status} successfully`,
-            data: updatedKol
+            data: updatedKol,
+            email_sent: true
         });
 
     } catch (error) {
@@ -344,25 +336,14 @@ exports.updateKOLStatus = async (req, res) => {
     }
 };
 
-/**
- * List pending KOL applications
- */
 exports.listKOLApplications = async (req, res) => {
     try {
-        const {
-            page = 1,
-            limit = 10,
-            search = '',
-            sort_by = 'modified_at',
-            sort_order = 'DESC'
-        } = req.query;
+        const { page = 1, limit = 10, search = '', sort_by = 'modified_at', sort_order = 'DESC' } = req.query;
 
-        // Always filter by pending status for applications
         const whereConditions = {
             status: 'pending'
         };
 
-        // Build user search conditions
         const userSearchConditions = {};
         if (search) {
             userSearchConditions[Op.or] = [
@@ -373,10 +354,8 @@ exports.listKOLApplications = async (req, res) => {
             ];
         }
 
-        // Calculate pagination
         const offset = (page - 1) * limit;
 
-        // Get total count for pagination
         const totalCount = await influencer.count({
             where: whereConditions,
             include: [{
@@ -387,12 +366,10 @@ exports.listKOLApplications = async (req, res) => {
             }]
         });
 
-        // Validate sort parameters
         const validSortFields = ['username', 'email', 'modified_at'];
         const sortField = validSortFields.includes(sort_by) ? sort_by : 'modified_at';
         const sortDirection = sort_order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
-        // Build sort options
         let order = [];
         if (sortField === 'username' || sortField === 'email') {
             order.push([{ model: users, as: 'user' }, sortField, sortDirection]);
@@ -400,7 +377,6 @@ exports.listKOLApplications = async (req, res) => {
             order.push([sortField, sortDirection]);
         }
 
-        // Fetch pending applications
         const applications = await influencer.findAll({
             where: whereConditions,
             include: [
@@ -421,14 +397,12 @@ exports.listKOLApplications = async (req, res) => {
             offset: offset
         });
 
-        // Format response
         const formattedApplications = applications.map(app => {
             const appData = app.get({ plain: true });
 
             return {
                 ...appData,
                 total_social_links: appData.influencer_social_links ? appData.influencer_social_links.length : 0,
-                // For pending applications, we don't have these metrics yet
                 total_sales: 0,
                 total_commission: 0,
                 total_affiliate_links: 0
@@ -456,14 +430,10 @@ exports.listKOLApplications = async (req, res) => {
     }
 };
 
-/**
- * Get details of a specific KOL application
- */
 exports.getApplicationDetails = async (req, res) => {
     try {
         const { id } = req.params;
 
-        // Get application info
         const application = await influencer.findOne({
             where: {
                 influencer_id: id,
@@ -510,15 +480,11 @@ exports.getApplicationDetails = async (req, res) => {
     }
 };
 
-/**
- * Approve a KOL application
- */
 exports.approveApplication = async (req, res) => {
     try {
         const { id } = req.params;
         const { tier_id } = req.body;
 
-        // Find the application
         const application = await influencer.findOne({
             where: {
                 influencer_id: id,
@@ -539,10 +505,8 @@ exports.approveApplication = async (req, res) => {
             });
         }
 
-        // Get the default tier if none provided
         let tierIdToUse = tier_id;
         if (!tierIdToUse) {
-            // Get the entry-level tier (lowest min_successful_purchases)
             const defaultTier = await influencer_tier.findOne({
                 order: [['min_successful_purchases', 'ASC']],
                 limit: 1
@@ -558,13 +522,30 @@ exports.approveApplication = async (req, res) => {
             }
         }
 
-        // Update application to active status with tier
+        // Get tier information for email
+        const tierInfo = await influencer_tier.findByPk(tierIdToUse);
+        if (!tierInfo) {
+            return res.status(400).json({
+                success: false,
+                message: 'Specified tier not found'
+            });
+        }
+
         await application.update({
             status: 'active',
             tier_id: tierIdToUse,
             status_reason: '',
             modified_at: new Date()
         });
+
+        // Send approval email notification
+        try {
+            await emailService.sendKolApprovalEmail(application.user, tierInfo);
+            logger.info(`Approval email sent to KOL ${application.user.email}`);
+        } catch (emailError) {
+            logger.error(`Failed to send approval email: ${emailError.message}`, { stack: emailError.stack });
+            // Continue with the response even if email fails
+        }
 
         res.status(200).json({
             success: true,
@@ -577,7 +558,8 @@ exports.approveApplication = async (req, res) => {
                 },
                 status: 'active',
                 tier_id: tierIdToUse
-            }
+            },
+            email_sent: true
         });
 
     } catch (error) {
@@ -590,15 +572,11 @@ exports.approveApplication = async (req, res) => {
     }
 };
 
-/**
- * Reject a KOL application
- */
 exports.rejectApplication = async (req, res) => {
     try {
         const { id } = req.params;
         const { reason } = req.body;
 
-        // Validate reason
         if (!reason || !reason.trim()) {
             return res.status(400).json({
                 success: false,
@@ -606,12 +584,17 @@ exports.rejectApplication = async (req, res) => {
             });
         }
 
-        // Find the application
         const application = await influencer.findOne({
             where: {
                 influencer_id: id,
                 status: 'pending'
-            }
+            },
+            include: [
+                {
+                    model: users,
+                    as: 'user'
+                }
+            ]
         });
 
         if (!application) {
@@ -621,16 +604,25 @@ exports.rejectApplication = async (req, res) => {
             });
         }
 
-        // Update application to rejected status
         await application.update({
             status: 'rejected',
             status_reason: reason.trim(),
             modified_at: new Date()
         });
 
+        // Send rejection email notification
+        try {
+            await emailService.sendKolRejectionEmail(application.user, reason.trim());
+            logger.info(`Rejection email sent to applicant ${application.user.email}`);
+        } catch (emailError) {
+            logger.error(`Failed to send rejection email: ${emailError.message}`, { stack: emailError.stack });
+            // Continue with the response even if email fails
+        }
+
         res.status(200).json({
             success: true,
-            message: 'Application rejected successfully'
+            message: 'Application rejected successfully',
+            email_sent: true
         });
 
     } catch (error) {

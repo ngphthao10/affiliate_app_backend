@@ -16,9 +16,6 @@ const XLSX = require('xlsx');
 const Op = Sequelize.Op;
 const mongoose = require('mongoose')
 
-/**
- * Get all payouts with filtering and pagination
- */
 exports.getPayouts = async (req, res) => {
     try {
         const {
@@ -32,24 +29,20 @@ exports.getPayouts = async (req, res) => {
             sort_order = 'DESC'
         } = req.query;
 
-        // Build where conditions
         const whereConditions = {};
 
         if (status !== 'all') {
             whereConditions.payment_status = status;
         }
 
-        // Add date range if provided
         if (start_date && end_date) {
             whereConditions.payout_date = {
                 [Op.between]: [start_date, end_date]
             };
         }
 
-        // Calculate pagination
         const offset = (page - 1) * limit;
 
-        // Get total count and stats for each status
         const statsWhereConditions = {};
         if (start_date && end_date) {
             statsWhereConditions.payout_date = {
@@ -63,7 +56,6 @@ exports.getPayouts = async (req, res) => {
             completedStats,
             failedStats
         ] = await Promise.all([
-            // Get total stats
             kol_payout.findOne({
                 where: statsWhereConditions,
                 attributes: [
@@ -72,7 +64,6 @@ exports.getPayouts = async (req, res) => {
                 ],
                 raw: true
             }),
-            // Get pending stats
             kol_payout.findOne({
                 where: {
                     ...statsWhereConditions,
@@ -84,7 +75,6 @@ exports.getPayouts = async (req, res) => {
                 ],
                 raw: true
             }),
-            // Get completed stats
             kol_payout.findOne({
                 where: {
                     ...statsWhereConditions,
@@ -96,7 +86,6 @@ exports.getPayouts = async (req, res) => {
                 ],
                 raw: true
             }),
-            // Get failed stats
             kol_payout.findOne({
                 where: {
                     ...statsWhereConditions,
@@ -121,7 +110,6 @@ exports.getPayouts = async (req, res) => {
             failed_amount: parseFloat(failedStats.amount) || 0
         };
 
-        // Build user search conditions for KOL name/email
         const userSearchConditions = {};
         if (search) {
             userSearchConditions[Op.or] = [
@@ -132,7 +120,6 @@ exports.getPayouts = async (req, res) => {
             ];
         }
 
-        // Fetch payouts with relations
         const payouts = await kol_payout.findAll({
             where: whereConditions,
             include: [
@@ -152,7 +139,6 @@ exports.getPayouts = async (req, res) => {
             offset: offset
         });
 
-        // Get total count for pagination
         const totalCount = await kol_payout.count({
             where: whereConditions,
             include: [{
@@ -188,10 +174,7 @@ exports.getPayouts = async (req, res) => {
     }
 };
 
-/**
- * Generate payouts for influencers based on sales through their affiliate links
- * This would typically be run on a schedule (e.g., monthly) or triggered manually by admin
- */
+
 exports.generatePayouts = async (req, res) => {
     try {
         const { start_date, end_date, influencer_id } = req.body;
@@ -203,22 +186,17 @@ exports.generatePayouts = async (req, res) => {
             });
         }
 
-        // Begin transaction
         const result = await sequelize.transaction(async (t) => {
-            // Build where conditions for orders
             const orderWhereConditions = {
                 creation_at: {
                     [Op.between]: [start_date, end_date]
                 },
                 status: {
-                    [Op.in]: ['delivered', 'completed'] // Only consider completed orders
+                    [Op.in]: ['delivered', 'completed']
                 }
             };
 
-            // If specific influencer is requested, add condition
             const influencerCondition = influencer_id ? { influencer_id } : {};
-
-            // In the generatePayouts function, update the orderItems query to include the inventory model:
 
             const orderItems = await order_item.findAll({
                 include: [
@@ -251,7 +229,6 @@ exports.generatePayouts = async (req, res) => {
                             }
                         ]
                     },
-                    // Add this to include the product_inventory model
                     {
                         model: product_inventory,
                         as: 'inventory',
@@ -261,7 +238,6 @@ exports.generatePayouts = async (req, res) => {
                 transaction: t
             });
 
-            // Group by influencer_id to calculate total commissions
             const influencerCommissions = {};
 
             for (const item of orderItems) {
@@ -269,14 +245,11 @@ exports.generatePayouts = async (req, res) => {
                 const itemPrice = item.inventory?.price || 0;
                 const itemTotal = parseFloat(item.quantity) * parseFloat(itemPrice);
 
-                // Calculate commission using both tier rate and product-specific rate
                 const tierCommissionRate = parseFloat(item.link.influencer.tier.commission_rate) / 100;
                 const productCommissionRate = parseFloat(item.link.product.commission_rate || 0) / 100;
 
-                // Combined commission rate (product rate takes precedence if available)
                 const effectiveCommissionRate = productCommissionRate > 0 ? productCommissionRate : tierCommissionRate;
 
-                // Calculate commission amount
                 const commissionAmount = itemTotal * effectiveCommissionRate;
 
                 if (!influencerCommissions[influencerId]) {
@@ -292,7 +265,6 @@ exports.generatePayouts = async (req, res) => {
                 influencerCommissions[influencerId].orders.add(item.order_id);
             }
 
-            // Create payout records for each influencer
             const payouts = [];
 
             for (const [influencerId, data] of Object.entries(influencerCommissions)) {
@@ -339,9 +311,6 @@ exports.generatePayouts = async (req, res) => {
     }
 };
 
-/**
- * Update payout status (for admin to mark as completed/failed)
- */
 exports.updatePayoutStatus = async (req, res) => {
     try {
         const { payout_id } = req.params;
@@ -370,7 +339,6 @@ exports.updatePayoutStatus = async (req, res) => {
             });
         }
 
-        // Update payout status
         await payout.update({
             payment_status,
             notes: notes || null,
@@ -400,9 +368,6 @@ exports.updatePayoutStatus = async (req, res) => {
     }
 };
 
-/**
- * Get payout details by ID
- */
 exports.getPayoutDetails = async (req, res) => {
     try {
         const { payout_id } = req.params;
@@ -466,7 +431,6 @@ exports.getPayoutDetails = async (req, res) => {
                     [Op.in]: ['delivered', 'completed']
                 }
             },
-            // logging: console.log,
             order: [['creation_at', 'DESC']],
             limit: 50
         });
@@ -508,14 +472,10 @@ exports.getPayoutDetails = async (req, res) => {
     }
 };
 
-/**
- * Export payout report as Excel file
- */
 exports.exportPayoutReport = async (req, res) => {
     try {
         const { start_date, end_date, status = 'all' } = req.query;
 
-        // Validate date range
         if (!start_date || !end_date) {
             return res.status(400).json({
                 success: false,
@@ -523,7 +483,6 @@ exports.exportPayoutReport = async (req, res) => {
             });
         }
 
-        // Build where conditions
         const whereConditions = {
             payout_date: {
                 [Op.between]: [start_date, end_date]
@@ -534,7 +493,6 @@ exports.exportPayoutReport = async (req, res) => {
             whereConditions.payment_status = status;
         }
 
-        // Fetch all payouts for the date range
         const payouts = await kol_payout.findAll({
             where: whereConditions,
             include: [
@@ -551,7 +509,6 @@ exports.exportPayoutReport = async (req, res) => {
             order: [['payout_date', 'DESC']]
         });
 
-        // Transform data for export
         const exportData = payouts.map(payout => ({
             'Payout ID': payout.payout_id,
             'KOL Name': `${payout.kol.user.first_name || ''} ${payout.kol.user.last_name || ''}`.trim(),
@@ -563,11 +520,9 @@ exports.exportPayoutReport = async (req, res) => {
             'Notes': payout.notes || ''
         }));
 
-        // Create workbook and add data
         const wb = XLSX.utils.book_new();
         const ws = XLSX.utils.json_to_sheet(exportData);
 
-        // Add summary worksheet
         const summaryData = [
             ['KOL Payout Report'],
             [`Period: ${start_date} to ${end_date}`],
@@ -588,18 +543,14 @@ exports.exportPayoutReport = async (req, res) => {
 
         const ws_summary = XLSX.utils.aoa_to_sheet(summaryData);
 
-        // Add worksheets to workbook
         XLSX.utils.book_append_sheet(wb, ws_summary, 'Summary');
         XLSX.utils.book_append_sheet(wb, ws, 'Payout Details');
 
-        // Generate file name
         const fileName = `kol_payouts_${start_date}_to_${end_date}.xlsx`;
 
-        // Set response headers
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', `attachment; filename=${fileName}`);
 
-        // Write to response
         const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
         res.send(buffer);
 
@@ -613,9 +564,6 @@ exports.exportPayoutReport = async (req, res) => {
     }
 };
 
-/**
- * Get payouts for a specific influencer (for KOL's own dashboard)
- */
 exports.getInfluencerPayouts = async (req, res) => {
     try {
         const {
@@ -628,10 +576,8 @@ exports.getInfluencerPayouts = async (req, res) => {
             sort_order = 'DESC'
         } = req.query;
 
-        // Ensure the user is actually an influencer
         const user_id = req.user.user_id;
 
-        // Find the influencer record
         const influencerRecord = await influencer.findOne({
             where: { user_id }
         });
@@ -645,7 +591,6 @@ exports.getInfluencerPayouts = async (req, res) => {
 
         const influencer_id = influencerRecord.influencer_id;
 
-        // Build where conditions
         const whereConditions = {
             kol_id: influencer_id
         };
@@ -654,24 +599,20 @@ exports.getInfluencerPayouts = async (req, res) => {
             whereConditions.payment_status = status;
         }
 
-        // Add date range if provided
         if (start_date && end_date) {
             whereConditions.payout_date = {
                 [Op.between]: [start_date, end_date]
             };
         }
 
-        // Calculate pagination
         const offset = (page - 1) * limit;
 
-        // Get stats for this influencer
         const [
             totalStats,
             pendingStats,
             completedStats,
             failedStats
         ] = await Promise.all([
-            // Get total stats
             kol_payout.findOne({
                 where: {
                     ...whereConditions,
@@ -683,7 +624,6 @@ exports.getInfluencerPayouts = async (req, res) => {
                 ],
                 raw: true
             }),
-            // Get pending stats
             kol_payout.findOne({
                 where: {
                     ...whereConditions,
@@ -696,7 +636,6 @@ exports.getInfluencerPayouts = async (req, res) => {
                 ],
                 raw: true
             }),
-            // Get completed stats
             kol_payout.findOne({
                 where: {
                     ...whereConditions,
@@ -709,7 +648,6 @@ exports.getInfluencerPayouts = async (req, res) => {
                 ],
                 raw: true
             }),
-            // Get failed stats
             kol_payout.findOne({
                 where: {
                     ...whereConditions,
@@ -735,7 +673,6 @@ exports.getInfluencerPayouts = async (req, res) => {
             failed_amount: parseFloat(failedStats?.amount) || 0
         };
 
-        // Fetch payouts with relations
         const payouts = await kol_payout.findAll({
             where: whereConditions,
             include: [
@@ -754,7 +691,6 @@ exports.getInfluencerPayouts = async (req, res) => {
             offset: offset
         });
 
-        // Get total count for pagination
         const totalCount = await kol_payout.count({
             where: whereConditions
         });
@@ -781,9 +717,6 @@ exports.getInfluencerPayouts = async (req, res) => {
     }
 };
 
-/**
- * Get payout details by ID (for the KOL's own dashboard)
- */
 exports.getInfluencerPayoutDetails = async (req, res) => {
     try {
         const { payout_id } = req.params;
@@ -796,7 +729,6 @@ exports.getInfluencerPayoutDetails = async (req, res) => {
             });
         }
 
-        // Find the influencer record
         const influencerRecord = await influencer.findOne({
             where: { user_id }
         });
@@ -836,7 +768,6 @@ exports.getInfluencerPayoutDetails = async (req, res) => {
             });
         }
 
-        // Check if this payout belongs to the requesting user
         if (payout.kol_id !== influencerRecord.influencer_id) {
             return res.status(403).json({
                 success: false,
@@ -844,8 +775,6 @@ exports.getInfluencerPayoutDetails = async (req, res) => {
             });
         }
 
-        // Get related orders that contributed to this payout
-        // Find orders within the period that used this KOL's affiliate links
         const relatedOrders = await order.findAll({
             include: [
                 {
@@ -886,29 +815,23 @@ exports.getInfluencerPayoutDetails = async (req, res) => {
             limit: 50
         });
 
-        // Process order items to calculate commission per order
         const ordersWithCommission = relatedOrders.map(order => {
             let totalCommission = 0;
             let productName = '';
 
-            // Calculate commission for each order item
             order.order_items.forEach(item => {
                 if (!item.link || !item.inventory) return;
 
                 const itemPrice = parseFloat(item.inventory.price) || 0;
                 const itemTotal = parseFloat(item.quantity) * itemPrice;
 
-                // Get tier commission rate or product-specific rate
                 const tierCommissionRate = parseFloat(payout.kol.tier.commission_rate) / 100;
                 const productCommissionRate = parseFloat(item.link.product.commission_rate || 0) / 100;
 
-                // Use product rate if available, otherwise use tier rate
                 const effectiveCommissionRate = productCommissionRate > 0 ? productCommissionRate : tierCommissionRate;
 
-                // Add to total commission for this order
                 totalCommission += itemTotal * effectiveCommissionRate;
 
-                // Get product name (use first product if multiple)
                 if (!productName && item.link.product) {
                     productName = item.link.product.name;
                 }
@@ -956,15 +879,11 @@ exports.getInfluencerPayoutDetails = async (req, res) => {
     }
 };
 
-/**
- * Get sales statistics for an influencer
- */
 exports.getInfluencerSalesStats = async (req, res) => {
     try {
         const { start_date, end_date } = req.query;
         const user_id = req.user.user_id;
 
-        // Find the influencer record
         const influencerRecord = await influencer.findOne({
             where: { user_id },
             include: [
@@ -985,7 +904,6 @@ exports.getInfluencerSalesStats = async (req, res) => {
 
         const influencer_id = influencerRecord.influencer_id;
 
-        // Validate date range
         if (!start_date || !end_date) {
             return res.status(400).json({
                 success: false,
@@ -993,7 +911,6 @@ exports.getInfluencerSalesStats = async (req, res) => {
             });
         }
 
-        // Find all completed orders through this influencer's affiliate links
         const orderItems = await order_item.findAll({
             include: [
                 {
@@ -1031,7 +948,6 @@ exports.getInfluencerSalesStats = async (req, res) => {
             ]
         });
 
-        // Calculate total sales and commission
         let totalOrders = new Set();
         let totalAmount = 0;
         let commissionEarned = 0;
@@ -1043,21 +959,17 @@ exports.getInfluencerSalesStats = async (req, res) => {
             const itemTotal = parseFloat(item.quantity) * parseFloat(item.inventory.price || 0);
             totalAmount += itemTotal;
 
-            // Calculate commission
             const tierCommissionRate = parseFloat(influencerRecord.tier.commission_rate) / 100;
             const productCommissionRate = parseFloat(item.link.product.commission_rate || 0) / 100;
 
-            // Use product-specific rate if available, otherwise use tier rate
             const effectiveRate = productCommissionRate > 0 ? productCommissionRate : tierCommissionRate;
             commissionEarned += itemTotal * effectiveRate;
         });
 
-        // Get click data from MongoDB (if available)
         let clickCount = 0;
         try {
             const KolAffiliateStats = require('../models/mongodb/kolStats');
             if (mongoose && mongoose.connection.readyState === 1) {
-                // Only attempt to query MongoDB if connection is established
                 const clickStats = await KolAffiliateStats.aggregate([
                     {
                         $match: {
@@ -1082,7 +994,6 @@ exports.getInfluencerSalesStats = async (req, res) => {
             }
         } catch (mongoError) {
             logger.error(`Error fetching MongoDB click stats: ${mongoError.message}`);
-            // Continue even if MongoDB query fails
         }
 
         res.status(200).json({

@@ -16,14 +16,9 @@ const Op = Sequelize.Op;
 exports.generateKolConversionReport = async (options = {}) => {
     try {
         const {
-            kolId,
-            startDate,
-            endDate = new Date(),
-            productId,
-            groupBy = 'month'
+            kolId, startDate, endDate = new Date(), productId, groupBy = 'month'
         } = options;
 
-        // Validate required kolId
         if (!kolId) {
             return {
                 success: false,
@@ -32,7 +27,6 @@ exports.generateKolConversionReport = async (options = {}) => {
             };
         }
 
-        // Build date range filter
         const dateFilter = {};
         if (startDate) {
             dateFilter[Op.gte] = moment(startDate).startOf('day').toDate();
@@ -41,7 +35,6 @@ exports.generateKolConversionReport = async (options = {}) => {
             dateFilter[Op.lte] = moment(endDate).endOf('day').toDate();
         }
 
-        // Base query conditions
         const whereConditions = {
             link_id: { [Op.not]: null }
         };
@@ -49,7 +42,6 @@ exports.generateKolConversionReport = async (options = {}) => {
             whereConditions.creation_at = dateFilter;
         }
 
-        // Fetch order items with related data
         const orderItems = await order_item.findAll({
             where: whereConditions,
             include: [
@@ -94,7 +86,6 @@ exports.generateKolConversionReport = async (options = {}) => {
             order: [['creation_at', 'DESC']]
         });
 
-        // Return empty report if no data found
         if (!orderItems?.length) {
             return {
                 success: true,
@@ -114,7 +105,6 @@ exports.generateKolConversionReport = async (options = {}) => {
             };
         }
 
-        // Process and return data
         const processedData = processOrderItems(orderItems);
         const groupedData = groupReportData(processedData, groupBy);
         const summary = calculateSummary(processedData);
@@ -147,20 +137,16 @@ function processOrderItems(orderItems) {
         const orderDate = item.creation_at;
         const itemTotal = (item.inventory?.price || 0) * item.quantity;
 
-        // Get KOL info
         const kol = item.link?.influencer;
         const kolUser = kol?.user;
         const kolName = kolUser?.username ||
             `${kolUser?.first_name || ''} ${kolUser?.last_name || ''}`.trim();
 
-        // Get product info
         const prod = item.link?.product;
 
-        // Get commission rates
         const productCommissionRate = prod?.commission_rate || 0;
         const tierCommissionRate = kol?.tier?.commission_rate || 0;
 
-        // Calculate total commission
         const productCommission = (itemTotal * productCommissionRate) / 100;
         const tierCommission = (itemTotal * tierCommissionRate) / 100;
         const totalCommission = productCommission + tierCommission;
