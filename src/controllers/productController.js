@@ -11,10 +11,8 @@ exports.listProducts = async (req, res) => {
             page = 1, limit = 10, search = '', category_id, sort_by = 'creation_at', sort_order = 'DESC', min_price, max_price, in_stock
         } = req.query;
 
-        // Build filter conditions
         const whereConditions = {};
 
-        // Search in name and description
         if (search) {
             whereConditions[Op.or] = [
                 { name: { [Op.like]: `%${search}%` } },
@@ -22,17 +20,14 @@ exports.listProducts = async (req, res) => {
             ];
         }
 
-        // Filter by category
         if (category_id) {
             whereConditions.category_id = category_id;
         }
 
-        // Filter by stock status
         if (in_stock !== undefined) {
             whereConditions.out_of_stock = in_stock === 'true' ? false : true;
         }
 
-        // Prepare inventory filters for price range
         let inventoryFilters = {};
         if (min_price !== undefined || max_price !== undefined) {
             if (min_price !== undefined) {
@@ -43,30 +38,24 @@ exports.listProducts = async (req, res) => {
             }
         }
 
-        // Calculate pagination
         const offset = (page - 1) * limit;
 
-        // Get total product count for pagination
         const totalProductsCount = await product.count({ where: whereConditions });
 
-        // Validate sort parameters
         const validSortFields = ['name', 'creation_at', 'modified_at', 'reviews_count'];
         const sortField = validSortFields.includes(sort_by) ? sort_by : 'creation_at';
         const sortDirection = sort_order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
-        // First, get all subCategory_id values from products
         const productsWithSubCatId = await product.findAll({
             where: whereConditions,
             attributes: ['subCategory_id'],
             raw: true
         });
 
-        // Extract unique subCategory_id values
         const subCategoryIds = [...new Set(productsWithSubCatId
             .map(p => p.subCategory_id)
             .filter(id => id !== null && id !== undefined))];
 
-        // Fetch subcategory data
         let subCategories = [];
         if (subCategoryIds.length > 0) {
             subCategories = await category.findAll({
@@ -80,13 +69,11 @@ exports.listProducts = async (req, res) => {
             });
         }
 
-        // Create a mapping of subCategory_id values to their display text
         const subCategoryMap = {};
         subCategories.forEach(sc => {
             subCategoryMap[sc.category_id] = sc.display_text;
         });
 
-        // Get products with filters, sorting, and pagination
         const products = await product.findAll({
             where: whereConditions,
             attributes: [
@@ -120,41 +107,34 @@ exports.listProducts = async (req, res) => {
             offset: offset
         });
 
-        // Format the response
         const formattedProducts = products.map(product => {
-            // Xử lý images - ưu tiên product_images, fallback sang small_image
             let images = [];
 
             if (product.product_images && product.product_images.length > 0) {
-                // Sử dụng ảnh từ product_images
                 images = product.product_images.map(img => ({
                     id: img.image_id,
                     url: img.image,
                     alt: img.alt || product.name
                 }));
             } else if (product.small_image) {
-                // Fallback sang small_image nếu có
                 images = [{
                     id: null,
                     url: product.small_image,
                     alt: product.name
                 }];
             } else {
-                // Nếu không có ảnh nào, sử dụng placeholder
                 images = [{
                     id: null,
-                    url: '/images/placeholder-product.jpg', // Đường dẫn đến ảnh placeholder
+                    url: '/images/placeholder-product.jpg',
                     alt: 'No image available'
                 }];
             }
 
-            // Get price range from inventory
             let minPrice = null;
             let maxPrice = null;
             const availableSizes = [];
 
             if (product.product_inventories && product.product_inventories.length > 0) {
-                // Get unique sizes
                 product.product_inventories.forEach(item => {
                     if (item.size && !availableSizes.includes(item.size)) {
                         availableSizes.push(item.size);
@@ -170,7 +150,6 @@ exports.listProducts = async (req, res) => {
                 });
             }
 
-            // Handle subCategory using the mapping we created
             let subCategoryData = null;
             if (product.subCategory_id) {
                 subCategoryData = {
@@ -205,7 +184,6 @@ exports.listProducts = async (req, res) => {
             };
         });
 
-        // Return products with pagination info
         res.status(200).json({
             success: true,
             products: formattedProducts,
@@ -419,8 +397,7 @@ exports.listBestSellers = async (req, res) => {
         });
     }
 };
-// productController.js
-// productController.js
+
 exports.filterProducts = async (req, res) => {
     try {
         const {
@@ -677,20 +654,10 @@ exports.filterProducts = async (req, res) => {
 };
 exports.listAll = async (req, res) => {
     try {
-        const {
-            search = '',
-            category_id,
-            sort_by = 'creation_at',
-            sort_order = 'DESC',
-            min_price,
-            max_price,
-            in_stock
-        } = req.query;
+        const { search = '', category_id, sort_by = 'creation_at', sort_order = 'DESC', min_price, max_price, in_stock } = req.query;
 
-        // Build filter conditions
         const whereConditions = {};
 
-        // Search in name and description
         if (search) {
             whereConditions[Op.or] = [
                 { name: { [Op.like]: `%${search}%` } },
@@ -698,17 +665,14 @@ exports.listAll = async (req, res) => {
             ];
         }
 
-        // Filter by category
         if (category_id) {
             whereConditions.category_id = category_id;
         }
 
-        // Filter by stock status
         if (in_stock !== undefined) {
             whereConditions.out_of_stock = in_stock === 'true' ? false : true;
         }
 
-        // Prepare inventory filters for price range
         let inventoryFilters = {};
         if (min_price !== undefined || max_price !== undefined) {
             if (min_price !== undefined) {
@@ -719,24 +683,20 @@ exports.listAll = async (req, res) => {
             }
         }
 
-        // Validate sort parameters
         const validSortFields = ['name', 'creation_at', 'modified_at', 'reviews_count'];
         const sortField = validSortFields.includes(sort_by) ? sort_by : 'creation_at';
         const sortDirection = sort_order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
-        // First, get all subCategory_id values from products
         const productsWithSubCatId = await product.findAll({
             where: whereConditions,
             attributes: ['subCategory_id'],
             raw: true
         });
 
-        // Extract unique subCategory_id values
         const subCategoryIds = [...new Set(productsWithSubCatId
             .map(p => p.subCategory_id)
             .filter(id => id !== null && id !== undefined))];
 
-        // Fetch subcategory data
         let subCategories = [];
         if (subCategoryIds.length > 0) {
             subCategories = await category.findAll({
@@ -750,13 +710,11 @@ exports.listAll = async (req, res) => {
             });
         }
 
-        // Create a mapping of subCategory_id values to their display text
         const subCategoryMap = {};
         subCategories.forEach(sc => {
             subCategoryMap[sc.category_id] = sc.display_text;
         });
 
-        // Get all products with filters and sorting (no pagination)
         const products = await product.findAll({
             where: whereConditions,
             attributes: [
@@ -788,41 +746,34 @@ exports.listAll = async (req, res) => {
             order: [[sortField, sortDirection]]
         });
 
-        // Format the response
         const formattedProducts = products.map(product => {
-            // Xử lý images - ưu tiên product_images, fallback sang small_image
             let images = [];
 
             if (product.product_images && product.product_images.length > 0) {
-                // Sử dụng ảnh từ product_images
                 images = product.product_images.map(img => ({
                     id: img.image_id,
                     url: img.image,
                     alt: img.alt || product.name
                 }));
             } else if (product.small_image) {
-                // Fallback sang small_image nếu có
                 images = [{
                     id: null,
                     url: product.small_image,
                     alt: product.name
                 }];
             } else {
-                // Nếu không có ảnh nào, sử dụng placeholder
                 images = [{
                     id: null,
-                    url: '/images/placeholder-product.jpg', // Đường dẫn đến ảnh placeholder
+                    url: '/images/placeholder-product.jpg',
                     alt: 'No image available'
                 }];
             }
 
-            // Get price range from inventory
             let minPrice = null;
             let maxPrice = null;
             const availableSizes = [];
 
             if (product.product_inventories && product.product_inventories.length > 0) {
-                // Get unique sizes
                 product.product_inventories.forEach(item => {
                     if (item.size && !availableSizes.includes(item.size)) {
                         availableSizes.push(item.size);
@@ -838,7 +789,6 @@ exports.listAll = async (req, res) => {
                 });
             }
 
-            // Handle subCategory using the mapping we created
             let subCategoryData = null;
             if (product.subCategory_id) {
                 subCategoryData = {
@@ -872,7 +822,6 @@ exports.listAll = async (req, res) => {
             };
         });
 
-        // Return all products without pagination info
         res.status(200).json({
             success: true,
             products: formattedProducts
@@ -893,13 +842,11 @@ exports.addProduct = async (req, res) => {
     try {
         const { name, description, sku, category_id, subCategory, commission_rate, inventory } = req.body;
 
-        // Parse inventory if needed
         let parsedInventory = [];
         try {
             parsedInventory = typeof inventory === 'string' ? JSON.parse(inventory) : inventory;
         } catch (error) {
             logger.error(`Error parsing inventory data: ${error.message}`);
-            // Fallback to legacy format
             const sizes = req.body.sizes ? (typeof req.body.sizes === 'string' ? JSON.parse(req.body.sizes) : req.body.sizes) : [];
             if (sizes.length > 0 && req.body.price) {
                 parsedInventory = sizes.map(size => ({
@@ -910,7 +857,6 @@ exports.addProduct = async (req, res) => {
             }
         }
 
-        // Validate required fields
         if (!name) {
             return res.status(400).json({
                 success: false,
@@ -925,7 +871,6 @@ exports.addProduct = async (req, res) => {
             });
         }
 
-        // Check for main product image
         if (!req.files || !req.files.image1) {
             return res.status(400).json({
                 success: false,
@@ -933,7 +878,6 @@ exports.addProduct = async (req, res) => {
             });
         }
 
-        // Use the category_id directly instead of looking it up
         const categoryId = parseInt(category_id, 10);
         if (isNaN(categoryId)) {
             return res.status(400).json({
@@ -943,16 +887,13 @@ exports.addProduct = async (req, res) => {
         }
         const subCategoryId = parseInt(subCategory, 10) || null;
 
-        // Function to convert full path to relative URL
         const getRelativeUrl = (filePath) => {
             const filename = path.basename(filePath);
             console.log(filePath)
             return `/uploads/products/${filename}`;
         };
-        // Start transaction
         const result = await product.sequelize.transaction(async (t) => {
             console.log(getRelativeUrl(req.files.image1[0].path))
-            // Create the product
             const newProduct = await product.create({
                 name,
                 description,
@@ -966,7 +907,6 @@ exports.addProduct = async (req, res) => {
                 modified_at: new Date()
             }, { transaction: t });
 
-            // Add product images if available
             const productImages = [];
             if (req.files) {
                 for (let i = 1; i <= 4; i++) {
@@ -974,7 +914,7 @@ exports.addProduct = async (req, res) => {
                     if (req.files[imageField] && req.files[imageField][0]) {
                         const productImage = await product_image.create({
                             product_id: newProduct.product_id,
-                            image: req.savedPaths[imageField], // Use the saved relative path
+                            image: req.savedPaths[imageField],
                             alt: `${name} - Image ${i}`,
                             creation_at: new Date(),
                             modified_at: new Date()
@@ -983,7 +923,6 @@ exports.addProduct = async (req, res) => {
                     }
                 }
             }
-            // Add inventory items for each size
             const inventoryItems = [];
             for (const item of parsedInventory) {
                 const inventoryItem = await product_inventory.create({
@@ -1005,7 +944,6 @@ exports.addProduct = async (req, res) => {
             };
         });
 
-        // Format response
         res.status(201).json({
             success: true,
             message: "Product added successfully",
@@ -1064,7 +1002,6 @@ exports.getProduct = async (req, res) => {
             });
         }
 
-        // Get parent category info if it exists
         let parentCategory = null;
         if (productData.category?.parent_category_id) {
             parentCategory = await category.findByPk(productData.category.parent_category_id, {
@@ -1072,7 +1009,6 @@ exports.getProduct = async (req, res) => {
             });
         }
 
-        // Get subcategory info if it exists
         let subCategory = null;
         if (productData.subCategory_id) {
             subCategory = await category.findByPk(productData.subCategory_id, {
@@ -1080,7 +1016,6 @@ exports.getProduct = async (req, res) => {
             });
         }
 
-        // Format response
         const formattedProduct = {
             id: productData.product_id,
             name: productData.name,
@@ -1145,7 +1080,6 @@ exports.updateProduct = async (req, res) => {
             });
         }
 
-        // Check if product exists
         const existingProduct = await product.findByPk(id);
         if (!existingProduct) {
             return res.status(404).json({
@@ -1154,19 +1088,11 @@ exports.updateProduct = async (req, res) => {
             });
         }
 
-        // Extract and validate basic fields
         const {
-            name,
-            description,
-            sku,
-            category_id,
-            subCategory_id, // Add support for subcategory
-            commission_rate,
-            inventory,
-            removed_images = [] // Add support for removed images
+            name, description, sku, category_id, subCategory_id,
+            commission_rate, inventory, removed_images = []
         } = req.body;
 
-        // Validate required fields
         if (!name || !name.trim()) {
             return res.status(400).json({
                 success: false,
@@ -1174,7 +1100,6 @@ exports.updateProduct = async (req, res) => {
             });
         }
 
-        // Parse inventory data
         let parsedInventory = [];
         try {
             parsedInventory = typeof inventory === 'string' ? JSON.parse(inventory) : inventory;
@@ -1186,44 +1111,36 @@ exports.updateProduct = async (req, res) => {
             });
         }
 
-        // Parse removed images
         const imagesToRemove = typeof removed_images === 'string'
             ? JSON.parse(removed_images)
             : removed_images;
 
-        // Function to get relative path for images
         const getRelativePath = (filePath) => {
             const filename = path.basename(filePath);
             return `/uploads/products/${filename}`;
         };
 
-        // Start transaction
         await product.sequelize.transaction(async (t) => {
-            // Update base product data
             const updateData = {
                 name: name.trim(),
                 description: description || '',
                 sku: sku || '',
                 category_id: category_id,
-                subCategory_id: subCategory_id || null, // Include subcategory_id in update
+                subCategory_id: subCategory_id || null,
                 commission_rate: commission_rate || 0,
                 modified_at: new Date()
             };
 
-            // Update small image if new one uploaded
             if (req.files?.image1) {
                 updateData.small_image = req.savedPaths?.image1 || getRelativePath(req.files.image1[0].path);
             }
 
-            // Update the product
             await product.update(updateData, {
                 where: { product_id: id },
                 transaction: t
             });
 
-            // Handle image deletions
             if (imagesToRemove.length > 0) {
-                // Find images to delete (for file deletion)
                 const imagesToDelete = await product_image.findAll({
                     where: {
                         image_id: imagesToRemove,
@@ -1231,7 +1148,6 @@ exports.updateProduct = async (req, res) => {
                     }
                 });
 
-                // Delete physical files if possible
                 for (const image of imagesToDelete) {
                     try {
                         const imagePath = path.join(process.cwd(), 'public', image.image);
@@ -1240,11 +1156,9 @@ exports.updateProduct = async (req, res) => {
                         }
                     } catch (fileError) {
                         logger.error(`Error deleting image file: ${fileError.message}`);
-                        // Continue even if file deletion fails
                     }
                 }
 
-                // Delete the database records
                 await product_image.destroy({
                     where: {
                         image_id: imagesToRemove,
@@ -1254,7 +1168,6 @@ exports.updateProduct = async (req, res) => {
                 });
             }
 
-            // Handle new images
             if (req.files) {
                 for (let i = 1; i <= 4; i++) {
                     const imageField = `image${i}`;
@@ -1272,15 +1185,12 @@ exports.updateProduct = async (req, res) => {
                 }
             }
 
-            // Update inventory
             if (parsedInventory.length > 0) {
-                // Delete existing inventory
                 await product_inventory.destroy({
                     where: { product_id: id },
                     transaction: t
                 });
 
-                // Create new inventory items
                 for (const item of parsedInventory) {
                     await product_inventory.create({
                         product_id: id,
@@ -1293,7 +1203,6 @@ exports.updateProduct = async (req, res) => {
                 }
             }
 
-            // Update out_of_stock status
             const totalInventory = await product_inventory.sum('quantity', {
                 where: { product_id: id },
                 transaction: t
@@ -1322,9 +1231,6 @@ exports.updateProduct = async (req, res) => {
     }
 };
 
-/**
- * Delete a product image
- */
 exports.deleteProductImage = async (req, res) => {
     try {
         const { imageId } = req.params;
@@ -1345,17 +1251,14 @@ exports.deleteProductImage = async (req, res) => {
             });
         }
 
-        // Delete the image file from storage if possible
         try {
             if (imageToDelete.image && fs.existsSync(imageToDelete.image)) {
                 fs.unlinkSync(imageToDelete.image);
             }
         } catch (fileError) {
             logger.error(`Error deleting image file: ${fileError.message}`);
-            // Continue even if file deletion fails
         }
 
-        // Delete the database record
         await imageToDelete.destroy();
 
         res.status(200).json({
@@ -1372,12 +1275,8 @@ exports.deleteProductImage = async (req, res) => {
     }
 };
 
-/**
- * Delete a product and all related data
- */
 exports.deleteProduct = async (req, res) => {
     try {
-        // Support both query methods: params.id and body.productId
         const productId = req.params.id || req.body.productId;
 
         if (!productId) {
@@ -1387,7 +1286,6 @@ exports.deleteProduct = async (req, res) => {
             });
         }
 
-        // Check if product exists with its images
         const existingProduct = await product.findByPk(productId, {
             include: [
                 {
@@ -1404,17 +1302,13 @@ exports.deleteProduct = async (req, res) => {
             });
         }
 
-        // Delete everything in a transaction
         await product.sequelize.transaction(async (t) => {
-            // Delete inventory items
             await product_inventory.destroy({
                 where: { product_id: productId },
                 transaction: t
             });
 
-            // Try to delete physical image files
             try {
-                // Delete product images
                 if (existingProduct.product_images?.length > 0) {
                     for (const image of existingProduct.product_images) {
                         if (image.image && fs.existsSync(image.image)) {
@@ -1423,22 +1317,18 @@ exports.deleteProduct = async (req, res) => {
                     }
                 }
 
-                // Delete small image if exists
                 if (existingProduct.small_image && fs.existsSync(existingProduct.small_image)) {
                     fs.unlinkSync(existingProduct.small_image);
                 }
             } catch (fileError) {
                 logger.error(`Error deleting image files: ${fileError.message}`);
-                // Continue even if file deletion fails
             }
 
-            // Delete image records from database
             await product_image.destroy({
                 where: { product_id: productId },
                 transaction: t
             });
 
-            // Finally delete the product
             await existingProduct.destroy({ transaction: t });
         });
 

@@ -5,21 +5,13 @@ const Op = Sequelize.Op;
 const listOrders = async (req, res) => {
     try {
         const {
-            page = 1,
-            limit = 10,
-            search = '',
-            status,
-            payment_status,
-            start_date,
-            end_date,
-            sort_by = 'creation_at',
-            sort_order = 'DESC'
+            page = 1, limit = 10, search = '',
+            status, payment_status, start_date, end_date,
+            sort_by = 'creation_at', sort_order = 'DESC'
         } = req.query;
 
-        // Build filter conditions
         const whereConditions = {};
 
-        // Search in order ID or user information
         if (search) {
             whereConditions[Op.or] = [
                 { order_id: { [Op.like]: `%${search}%` } },
@@ -28,22 +20,18 @@ const listOrders = async (req, res) => {
             ];
         }
 
-        // Filter by status
         if (status && status !== 'All Statuses') {
             whereConditions.status = status.toLowerCase();
         }
 
-        // Filter by date range
         if (start_date && end_date) {
             whereConditions.creation_at = {
                 [Op.between]: [new Date(start_date), new Date(end_date)]
             };
         }
 
-        // Calculate pagination
         const offset = (page - 1) * limit;
 
-        // Get total orders count for pagination
         const totalOrdersCount = await order.count({
             where: whereConditions,
             include: [
@@ -55,12 +43,10 @@ const listOrders = async (req, res) => {
             ]
         });
 
-        // Validate sort parameters
         const validSortFields = ['order_id', 'creation_at', 'total', 'status'];
         const sortField = validSortFields.includes(sort_by) ? sort_by : 'creation_at';
         const sortDirection = sort_order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
-        // Get orders with filters, sorting, and pagination
         const orders = await order.findAll({
             where: whereConditions,
             include: [
@@ -87,7 +73,6 @@ const listOrders = async (req, res) => {
             offset: offset
         });
 
-        // Format response
         const formattedOrders = orders.map(order => ({
             id: order.order_id,
             customer: {
@@ -176,7 +161,6 @@ const getOrderDetails = async (req, res) => {
             });
         }
 
-        // Format response
         const formattedOrder = {
             order_id: orderDetails.order_id,
             user: {
@@ -320,9 +304,4 @@ const getOrdersByDate = async (req, res) => {
         });
     }
 };
-module.exports = {
-    listOrders,
-    getOrderDetails,
-    updateOrderStatus,
-    getOrdersByDate
-};
+module.exports = { listOrders, getOrderDetails, updateOrderStatus, getOrdersByDate };

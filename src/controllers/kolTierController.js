@@ -52,7 +52,6 @@ exports.createTier = async (req, res) => {
     try {
         const { tier_name, min_successful_purchases, commission_rate } = req.body;
 
-        // Validate required fields
         if (!tier_name || !min_successful_purchases || !commission_rate) {
             return res.status(400).json({
                 success: false,
@@ -60,7 +59,6 @@ exports.createTier = async (req, res) => {
             });
         }
 
-        // Validate numeric fields
         if (isNaN(min_successful_purchases) || min_successful_purchases < 0) {
             return res.status(400).json({
                 success: false,
@@ -75,7 +73,6 @@ exports.createTier = async (req, res) => {
             });
         }
 
-        // Check if tier name already exists
         const existingTier = await influencer_tier.findOne({
             where: {
                 tier_name: tier_name.trim()
@@ -114,7 +111,6 @@ exports.updateTier = async (req, res) => {
         const { id } = req.params;
         const { tier_name, min_successful_purchases, commission_rate } = req.body;
 
-        // Check if tier exists
         const tier = await influencer_tier.findByPk(id);
         if (!tier) {
             return res.status(404).json({
@@ -123,7 +119,6 @@ exports.updateTier = async (req, res) => {
             });
         }
 
-        // Validate numeric fields if provided
         if (min_successful_purchases !== undefined) {
             if (isNaN(min_successful_purchases) || min_successful_purchases < 0) {
                 return res.status(400).json({
@@ -142,7 +137,6 @@ exports.updateTier = async (req, res) => {
             }
         }
 
-        // Update tier
         await tier.update({
             tier_name: tier_name || tier.tier_name,
             min_successful_purchases: min_successful_purchases !== undefined ? parseInt(min_successful_purchases) : tier.min_successful_purchases,
@@ -168,7 +162,6 @@ exports.deleteTier = async (req, res) => {
     try {
         const { id } = req.params;
 
-        // Check if tier exists
         const tier = await influencer_tier.findByPk(id);
         if (!tier) {
             return res.status(404).json({
@@ -177,7 +170,6 @@ exports.deleteTier = async (req, res) => {
             });
         }
 
-        // Check if tier is being used by any influencers
         const influencerCount = await tier.countInfluencers();
         if (influencerCount > 0) {
             return res.status(400).json({
@@ -186,7 +178,6 @@ exports.deleteTier = async (req, res) => {
             });
         }
 
-        // Delete tier
         await tier.destroy();
 
         res.status(200).json({

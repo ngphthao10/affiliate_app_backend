@@ -5,7 +5,7 @@ const { users, influencer, roles, user_role } = require('../models/mysql');
 const logger = require('../utils/logger');
 const validator = require('validator');
 require('dotenv').config();
-// Create JWT token
+
 const createToken = (userId) => {
     return jwt.sign(
         { id: userId },
@@ -14,12 +14,10 @@ const createToken = (userId) => {
     );
 };
 
-// Register new user
 const registerUser = async (req, res) => {
     try {
         const { name, email, password } = req.body;
 
-        // Validate inputs
         if (!email || !password || !name) {
             return res.json({
                 success: false,
@@ -41,7 +39,6 @@ const registerUser = async (req, res) => {
             });
         }
 
-        // Check if user already exists
         const existingUser = await users.findOne({ where: { email } });
         if (existingUser) {
             return res.json({
@@ -50,11 +47,9 @@ const registerUser = async (req, res) => {
             });
         }
 
-        // Hash password
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // Create user
         const user = await users.create({
             username: email,
             first_name: name,
@@ -63,7 +58,6 @@ const registerUser = async (req, res) => {
             status: 'active'
         });
 
-        // Assign customer role to user
         const customerRole = await roles.findOne({ where: { role_name: 'customer' } });
         if (customerRole) {
             await user_role.create({
@@ -72,10 +66,8 @@ const registerUser = async (req, res) => {
             });
         }
 
-        // Generate token
         const token = createToken(user.user_id);
 
-        // Return success response
         return res.json({
             success: true,
             token,
@@ -95,12 +87,10 @@ const registerUser = async (req, res) => {
     }
 };
 
-// Login user
 const loginUser = async (req, res) => {
     try {
         const { email, password } = req.body;
 
-        // Validate inputs
         if (!email || !password) {
             return res.json({
                 success: false,
@@ -108,7 +98,6 @@ const loginUser = async (req, res) => {
             });
         }
 
-        // Find user
         const user = await users.findOne({ where: { email } });
         if (!user) {
             return res.json({
@@ -117,7 +106,6 @@ const loginUser = async (req, res) => {
             });
         }
 
-        // Check if account is active
         if (user.status !== 'active') {
             return res.json({
                 success: false,
@@ -125,7 +113,6 @@ const loginUser = async (req, res) => {
             });
         }
 
-        // Verify password
         const isMatch = await bcrypt.compare(password, user.password_hash);
         if (!isMatch) {
             return res.json({
@@ -134,10 +121,8 @@ const loginUser = async (req, res) => {
             });
         }
 
-        // Generate token
         const token = createToken(user.user_id);
 
-        // Return success response
         return res.json({
             success: true,
             token,
@@ -157,7 +142,6 @@ const loginUser = async (req, res) => {
     }
 };
 
-// Admin login (reused from your existing code)
 const adminLogin = async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -185,7 +169,6 @@ const kolLogin = async (req, res) => {
             });
         }
 
-        // Find user with influencer role and influencer data
         const user = await users.findOne({
             where: {
                 [Sequelize.Op.or]: [
@@ -220,7 +203,6 @@ const kolLogin = async (req, res) => {
             });
         }
 
-        // Check if account is active
         if (user.status !== 'active') {
             return res.json({
                 success: false,
@@ -228,7 +210,6 @@ const kolLogin = async (req, res) => {
             });
         }
 
-        // Check influencer status
         if (user.influencer.status !== 'active') {
             return res.json({
                 success: false,
@@ -236,7 +217,6 @@ const kolLogin = async (req, res) => {
             });
         }
 
-        // Verify password
         const isMatch = await bcrypt.compare(password, user.password_hash);
         if (!isMatch) {
             return res.json({
@@ -245,10 +225,8 @@ const kolLogin = async (req, res) => {
             });
         }
 
-        // Generate token
         const token = createToken(user.user_id);
 
-        // Return success response
         return res.json({
             success: true,
             token,
