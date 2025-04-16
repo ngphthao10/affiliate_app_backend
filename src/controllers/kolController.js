@@ -10,6 +10,7 @@ const {
     sequelize
 } = require('../models/mysql');
 const logger = require('../utils/logger');
+const emailService = require('../services/emailService');
 const Op = Sequelize.Op;
 
 exports.listKOLs = async (req, res) => {
@@ -262,7 +263,16 @@ exports.updateKOLStatus = async (req, res) => {
             });
         }
 
-        const kol = await influencer.findByPk(id);
+        const kol = await influencer.findByPk(id, {
+            include: [
+                {
+                    model: users,
+                    as: 'user',
+                    attributes: ['username', 'email', 'first_name', 'last_name']
+                }
+            ]
+        });
+
         if (!kol) {
             return res.status(404).json({
                 success: false,
@@ -290,6 +300,15 @@ exports.updateKOLStatus = async (req, res) => {
             modified_at: new Date()
         });
 
+        // Send email notification about status change
+        try {
+            await emailService.sendKolStatusUpdateEmail(kol.user, status, reason);
+            logger.info(`Status update email sent to KOL ${kol.user.email}`);
+        } catch (emailError) {
+            logger.error(`Failed to send status update email: ${emailError.message}`, { stack: emailError.stack });
+            // Continue with the response even if email fails
+        }
+
         const updatedKol = await influencer.findByPk(id, {
             include: [
                 {
@@ -303,7 +322,8 @@ exports.updateKOLStatus = async (req, res) => {
         res.status(200).json({
             success: true,
             message: `KOL has been ${status} successfully`,
-            data: updatedKol
+            data: updatedKol,
+            email_sent: true
         });
 
     } catch (error) {
@@ -502,12 +522,30 @@ exports.approveApplication = async (req, res) => {
             }
         }
 
+        // Get tier information for email
+        const tierInfo = await influencer_tier.findByPk(tierIdToUse);
+        if (!tierInfo) {
+            return res.status(400).json({
+                success: false,
+                message: 'Specified tier not found'
+            });
+        }
+
         await application.update({
             status: 'active',
             tier_id: tierIdToUse,
             status_reason: '',
             modified_at: new Date()
         });
+
+        // Send approval email notification
+        try {
+            await emailService.sendKolApprovalEmail(application.user, tierInfo);
+            logger.info(`Approval email sent to KOL ${application.user.email}`);
+        } catch (emailError) {
+            logger.error(`Failed to send approval email: ${emailError.message}`, { stack: emailError.stack });
+            // Continue with the response even if email fails
+        }
 
         res.status(200).json({
             success: true,
@@ -520,7 +558,8 @@ exports.approveApplication = async (req, res) => {
                 },
                 status: 'active',
                 tier_id: tierIdToUse
-            }
+            },
+            email_sent: true
         });
 
     } catch (error) {
@@ -549,7 +588,13 @@ exports.rejectApplication = async (req, res) => {
             where: {
                 influencer_id: id,
                 status: 'pending'
-            }
+            },
+            include: [
+                {
+                    model: users,
+                    as: 'user'
+                }
+            ]
         });
 
         if (!application) {
@@ -565,9 +610,19 @@ exports.rejectApplication = async (req, res) => {
             modified_at: new Date()
         });
 
+        // Send rejection email notification
+        try {
+            await emailService.sendKolRejectionEmail(application.user, reason.trim());
+            logger.info(`Rejection email sent to applicant ${application.user.email}`);
+        } catch (emailError) {
+            logger.error(`Failed to send rejection email: ${emailError.message}`, { stack: emailError.stack });
+            // Continue with the response even if email fails
+        }
+
         res.status(200).json({
             success: true,
-            message: 'Application rejected successfully'
+            message: 'Application rejected successfully',
+            email_sent: true
         });
 
     } catch (error) {
