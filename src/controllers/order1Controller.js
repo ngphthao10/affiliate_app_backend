@@ -175,7 +175,8 @@ const createPayment = async (orderId, amount, paymentMethod) => {
 // Placing orders using COD Method
 const placeOrder = async (req, res) => {
   try {
-    const { userId, address } = req.body;
+    const userId=req.user_id;
+    const { address,amount } = req.body;
 
     if (!userId || !address) {
       return res.status(400).json({
@@ -194,7 +195,6 @@ const placeOrder = async (req, res) => {
     }
 
     // Tính tổng tiền
-    const amount = items.reduce((total, item) => total + (item.price * item.quantity), 0) + deliveryCharge;
 
     console.log('Placing COD order with data:', { userId, items, amount, address });
 
@@ -216,7 +216,7 @@ const placeOrder = async (req, res) => {
     await createOrderItems(newOrder.order_id, items);
 
     // Tạo bản ghi trong bảng payment
-    await createPayment(newOrder.order_id, amount, 'COD');
+    await createPayment(newOrder.order_id, amount, 'cod');
 
     // Xóa giỏ hàng của người dùng
     await clearCart(userId);
@@ -239,13 +239,13 @@ const placeOrder = async (req, res) => {
 // Placing orders using Stripe Method
 const placeOrderStripe = async (req, res) => {
     try {
-      const { userId, address } = req.body;
-      const { origin } = req.headers;
+      const userId=req.user_id;
+      const { address } = req.body;
   
-      if (!userId || !address || !origin) {
+      if (!userId || !address ) {
         return res.status(400).json({
           success: false,
-          message: 'Missing required fields: userId, address, and origin are required',
+          message: 'Missing required fields: userId, address are required',
         });
       }
   
@@ -312,12 +312,11 @@ const placeOrderStripe = async (req, res) => {
   
       // Tạo phiên Stripe
       const session = await stripe.checkout.sessions.create({
-        success_url: `${origin}/verify?success=true&orderId=${newOrder.order_id}&user_id=${userId}`,
-      cancel_url: `${origin}/verify?success=false&orderId=${newOrder.order_id}&user_id=${userId}`,
+        success_url: `${process.env.STRIPE_RETURN_URL}?success=true&orderId=${newOrder.order_id}&user_id=${userId}`,
+      cancel_url: `${process.env.STRIPE_RETURN_URL}?success=false&orderId=${newOrder.order_id}&user_id=${userId}`,
         line_items,
         mode: 'payment',
       });
-  
       res.status(200).json({
         success: true,
         session_url: session.url,
@@ -336,8 +335,11 @@ const placeOrderStripe = async (req, res) => {
 const verifyStripe = async (req, res) => {
   try {
     // Lấy orderId, success và user_id từ req.query
-    const { orderId, success, user_id } = req.query;
-
+    const user_id=req.user_id;
+    const { orderId, success } = req.body;
+console.log("User id là "+user_id);
+console.log("orderId là "+orderId);
+console.log("Success là "+success)
     // Kiểm tra dữ liệu đầu vào
     if (!orderId || !user_id || success === undefined) {
       return res.status(400).json({
