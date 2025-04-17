@@ -1,4 +1,4 @@
-const { order, users, payment, Sequelize, user_address, order_item, cart_session, cart_item, product_inventory } = require('../models/mysql');
+const { order, users, payment, Sequelize, user_address, order_item, cart_session, cart_item, product_inventory,product } = require('../models/mysql');
 const logger = require('../utils/logger');
 const Stripe = require('stripe');
 const axios = require('axios');
@@ -409,8 +409,8 @@ const verifyStripe = async (req, res) => {
 // Placing orders using MoMo Method
 const placeOrderMomo = async (req, res) => {
   try {
-    const { userId, address } = req.body;
-
+    const userId = req.user_id; // Lấy từ middleware customerAuth
+    const { address,amount } = req.body;
     if (!userId || !address) {
       return res.status(400).json({
         success: false,
@@ -428,7 +428,7 @@ const placeOrderMomo = async (req, res) => {
     }
 
     // Tính tổng tiền bằng USD và làm tròn
-    const amountInUSD = Math.round(items.reduce((total, item) => total + (item.price * item.quantity), 0) + deliveryCharge);
+    const amountInUSD = Math.round(amount);
 
     // Chuyển sang VND để gửi cho MoMo
    // 1 USD = 25,000 VND
@@ -445,7 +445,6 @@ const placeOrderMomo = async (req, res) => {
       shipping_address_id: shippingAddressId,
     });
     const creationTime = new Date();
-    console.log('Creation time before saving:', creationTime.toString());
 
     // Tạo các mục trong order_item
     await createOrderItems(newOrder.order_id, items);
@@ -486,12 +485,10 @@ const placeOrderMomo = async (req, res) => {
       signature: signature,
     };
 
-    console.log('MoMo requestBody:', JSON.stringify(requestBody, null, 2));
 
     const response = await axios.post('https://test-payment.momo.vn/v2/gateway/api/create', requestBody, {
       headers: { 'Content-Type': 'application/json' },
     });
-
     if (response.data.resultCode === 0) {
       res.status(200).json({
         success: true,
@@ -517,7 +514,8 @@ const placeOrderMomo = async (req, res) => {
 // Verify MoMo
 const verifyMomo = async (req, res) => {
   try {
-    const { userId, orderId } = req.body;
+    const userId=req.user_id
+    const { orderId } = req.body;
 
     if (!userId || !orderId) {
       return res.status(400).json({
@@ -553,13 +551,14 @@ const verifyMomo = async (req, res) => {
       lang: "vi",
       signature: signature,
     };
-
+console.log(checkStatusBody);
+console.log(userId);
     const response = await axios.post('https://test-payment.momo.vn/v2/gateway/api/query', checkStatusBody, {
       headers: { 'Content-Type': 'application/json' },
     });
-
+console.log(response);
     const orderInfo = response.data;
-    if (orderInfo.resultCode === 0 && orderInfo.status === 'SUCCESS') {
+    if (orderInfo.resultCode === 0 && orderInfo.message === 'Thành công.') {
       await orderDetails.update({
         status: 'processing',
         modified_at: new Date(),
@@ -712,7 +711,7 @@ const allOrders = async (req, res) => {
 // User Order Data For Frontend
 const userOrders = async (req, res) => {
   try {
-    const { userId } = req.body;
+    const userId =req.user_id
 
     if (!userId) {
       return res.status(400).json({
@@ -815,7 +814,60 @@ const updateStatus = async (req, res) => {
     });
   }
 };
+const getOrderItems = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const userId = req.user_id; // Từ middleware customerAuth
 
+    const orderItems = await order_item.findAll({
+      where: { order_id: orderId },
+      include: [
+        {
+          model: product_inventory,
+          as: 'inventory',
+          include: [
+            {
+              model: product,
+              as: 'product',
+              attributes: ['name', 'small_image'], // Sử dụng small_image thay vì image
+            },
+          ],
+        },
+      ],
+    });
+
+    if (!orderItems || orderItems.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No items found for this order',
+      });
+    }
+
+    console.log('Order Items:', JSON.stringify(orderItems, null, 2));
+
+    const formattedItems = orderItems.map((item) => ({
+      name: item.inventory.product.name,
+      image: item.inventory.product.small_image ? [item.inventory.product.small_image] : [], // Đảm bảo image là mảng
+      price: item.inventory.price, // Lấy price từ product_inventory
+      quantity: item.quantity,
+      size: item.inventory.size, // Lấy size từ product_inventory
+    }));
+
+    res.status(200).json({
+      success: true,
+      items: formattedItems,
+    });
+  } catch (error) {
+    console.error('Error fetching order items:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch order items',
+      error: error.message,
+    });
+  }
+};
+
+// Định nghĩa route
 module.exports = {
   placeOrder,
   placeOrderStripe,
@@ -824,5 +876,5 @@ module.exports = {
   verifyMomo,
   allOrders,
   userOrders,
-  updateStatus,
+  updateStatus,getOrderItems
 };
