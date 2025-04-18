@@ -42,7 +42,7 @@ exports.listProducts = async (req, res) => {
 
         const totalProductsCount = await product.count({ where: whereConditions });
 
-        const validSortFields = ['name', 'creation_at', 'modified_at', 'reviews_count'];
+        const validSortFields = ['name', 'creation_at', 'modified_at', 'reviews_count', 'commission_rate'];
         const sortField = validSortFields.includes(sort_by) ? sort_by : 'creation_at';
         const sortDirection = sort_order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
