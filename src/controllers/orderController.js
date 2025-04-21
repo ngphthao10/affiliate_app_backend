@@ -269,7 +269,7 @@ const getOrdersByDate = async (req, res) => {
                 {
                     model: payment,
                     as: 'payments',
-                    attributes: ['status'],
+                    attributes: ['status', 'payment_method'],
                     order: [['creation_at', 'DESC']],
                     limit: 1
                 }
@@ -288,6 +288,7 @@ const getOrdersByDate = async (req, res) => {
             total: parseFloat(order.total),
             status: order.status,
             payment_status: order.payments[0]?.status || 'pending',
+            payment_method: order.payments[0]?.payment_method || '',
             created_at: order.creation_at
         }));
 

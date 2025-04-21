@@ -75,9 +75,35 @@ exports.trackAffiliateLink = async (req, res) => {
             sameSite: 'lax'
         };
 
-        res.cookie('affiliate_link_id', linkId, cookieOptions);
-        res.cookie('influencer_id', influencer_id, cookieOptions);
-        res.cookie('product_id', product_id, cookieOptions);
+        const currentTime = Date.now();
+
+        let affiliateLinks = [];
+        if (req.cookies.affiliate_links) {
+            try {
+                affiliateLinks = JSON.parse(req.cookies.affiliate_links);
+
+                affiliateLinks = affiliateLinks.filter(link => {
+                    return (currentTime - link.clickTime) <= TWO_WEEKS;
+                });
+            } catch (error) {
+                logger.error(`Error parsing affiliate_links cookie: ${error.message}`);
+                affiliateLinks = [];
+            }
+        }
+
+        const existingLinkIndex = affiliateLinks.findIndex(link => link.linkId === parseInt(linkId));
+
+        if (existingLinkIndex !== -1) {
+            affiliateLinks[existingLinkIndex].clickTime = currentTime;
+        } else {
+            affiliateLinks.push({
+                linkId: parseInt(linkId),
+                productId: parseInt(product_id),
+                influencerId: parseInt(influencer_id),
+                clickTime: currentTime
+            });
+        }
+        res.cookie('affiliate_links', JSON.stringify(affiliateLinks), cookieOptions);
 
         try {
             const KolAffiliateStats = mongoose.model('KolAffiliateStats');
@@ -114,7 +140,7 @@ exports.trackAffiliateLink = async (req, res) => {
             logger.error(`Error tracking click: ${error.message}`);
         }
 
-        const baseUrl = process.env.WEBSITE_URL || 'http://localhost:3000';
+        const baseUrl = 'http://localhost:5000';
         const redirectUrl = `${baseUrl}/product/${product_id}`;
 
         return res.redirect(redirectUrl);
