@@ -1186,20 +1186,59 @@ exports.updateProduct = async (req, res) => {
             }
 
             if (parsedInventory.length > 0) {
-                await product_inventory.destroy({
+                const existingInventory = await product_inventory.findAll({
                     where: { product_id: id },
                     transaction: t
                 });
 
+                const existingInventoryMap = existingInventory.reduce((map, item) => {
+                    map[item.size] = item;
+                    return map;
+                }, {});
+
+                const usedInventoryIds = await order_item.findAll({
+                    attributes: ['inventory_id'],
+                    include: [{
+                        model: product_inventory,
+                        as: 'inventory',
+                        where: { product_id: id }
+                    }],
+                    transaction: t
+                }).then(items => items.map(item => item.inventory_id));
+
                 for (const item of parsedInventory) {
-                    await product_inventory.create({
-                        product_id: id,
-                        size: item.size,
-                        price: parseFloat(item.price),
-                        quantity: parseInt(item.quantity, 10),
-                        creation_at: new Date(),
-                        modified_at: new Date()
-                    }, { transaction: t });
+                    if (existingInventoryMap[item.size]) {
+                        await existingInventoryMap[item.size].update({
+                            price: parseFloat(item.price),
+                            quantity: parseInt(item.quantity, 10),
+                            modified_at: new Date()
+                        }, { transaction: t });
+
+                        delete existingInventoryMap[item.size];
+                    } else {
+                        await product_inventory.create({
+                            product_id: id,
+                            size: item.size,
+                            price: parseFloat(item.price),
+                            quantity: parseInt(item.quantity, 10),
+                            creation_at: new Date(),
+                            modified_at: new Date()
+                        }, { transaction: t });
+                    }
+                }
+
+                const inventoryIdsToDelete = Object.values(existingInventoryMap)
+                    .map(item => item.inventory_id)
+                    .filter(id => !usedInventoryIds.includes(id));
+
+                if (inventoryIdsToDelete.length > 0) {
+                    await product_inventory.destroy({
+                        where: {
+                            inventory_id: inventoryIdsToDelete,
+                            product_id: id
+                        },
+                        transaction: t
+                    });
                 }
             }
 

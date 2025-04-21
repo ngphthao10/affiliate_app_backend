@@ -226,7 +226,7 @@ CREATE TABLE payment (
   payment_id INT AUTO_INCREMENT PRIMARY KEY,
   order_id INT NOT NULL,
   amount DECIMAL(10, 2) NOT NULL,
-  payment_method ENUM('zalopay', 'momo', 'vnpay'),
+  payment_method ENUM('zalopay', 'momo', 'vnpay', 'cod'),
   status ENUM ('pending', 'completed', 'failed'),
   creation_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   modified_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
