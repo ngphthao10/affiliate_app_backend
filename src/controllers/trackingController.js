@@ -70,9 +70,9 @@ exports.trackAffiliateLink = async (req, res) => {
         const TWO_WEEKS = 14 * 24 * 60 * 60 * 1000;
         const cookieOptions = {
             maxAge: TWO_WEEKS,
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax'
+            httpOnly: false,
+            sameSite: 'lax',
+            path: '/'
         };
 
         const currentTime = Date.now();

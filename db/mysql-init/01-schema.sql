@@ -382,3 +382,33 @@ INSERT INTO roles (role_name, description) VALUES
 ('admin', 'Administrator with full access'),
 ('customer', 'Regular customer'),
 ('influencer', 'Influencer/KOL with affiliate marketing capabilities');
+
+DELIMITER $$
+
+CREATE TRIGGER update_payment_on_order_cancel_return
+AFTER UPDATE ON `order`
+FOR EACH ROW
+BEGIN
+    IF NEW.status IN ('cancelled', 'returned') AND OLD.status NOT IN ('cancelled', 'returned') THEN
+        UPDATE payment
+        SET status = 'failed', modified_at = CURRENT_TIMESTAMP
+        WHERE order_id = NEW.order_id;
+    END IF;
+END$$
+
+DELIMITER ;
+
+DELIMITER $$
+
+CREATE TRIGGER update_cod_payment_on_delivered
+AFTER UPDATE ON `order`
+FOR EACH ROW
+BEGIN
+    IF NEW.status = 'delivered' AND OLD.status != 'delivered' THEN
+        UPDATE payment
+        SET status = 'completed', modified_at = CURRENT_TIMESTAMP
+        WHERE order_id = NEW.order_id AND payment_method = 'cod';
+    END IF;
+END$$
+
+DELIMITER ;
