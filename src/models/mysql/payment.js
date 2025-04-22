@@ -4,7 +4,7 @@ module.exports = function (sequelize, DataTypes) {
     payment_id: { autoIncrement: true, type: DataTypes.INTEGER, allowNull: false, primaryKey: true },
     order_id: { type: DataTypes.INTEGER, allowNull: false, references: { model: 'order', key: 'order_id' } },
     amount: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
-    payment_method: { type: DataTypes.ENUM('zalopay', 'momo', 'vnpay','stripe'), allowNull: true },
+    payment_method: { type: DataTypes.ENUM('zalopay', 'momo', 'vnpay','stripe','cod'), allowNull: true },
     status: { type: DataTypes.ENUM('pending', 'completed', 'failed'), allowNull: true },
     creation_at: { type: DataTypes.DATE, allowNull: true, defaultValue: Sequelize.Sequelize.literal('CURRENT_TIMESTAMP') },
     modified_at: { type: DataTypes.DATE, allowNull: true, defaultValue: Sequelize.Sequelize.literal('CURRENT_TIMESTAMP') }

@@ -480,87 +480,193 @@ exports.getApplicationDetails = async (req, res) => {
     }
 };
 
+// exports.approveApplication = async (req, res) => {
+//     try {
+//         const { id } = req.params;
+//         const { tier_id } = req.body;
+
+//         const application = await influencer.findOne({
+//             where: {
+//                 influencer_id: id,
+//                 status: 'pending'
+//             },
+//             include: [
+//                 {
+//                     model: users,
+//                     as: 'user'
+//                 }
+//             ]
+//         });
+
+//         if (!application) {
+//             return res.status(404).json({
+//                 success: false,
+//                 message: 'Pending application not found'
+//             });
+//         }
+
+//         let tierIdToUse = tier_id;
+//         if (!tierIdToUse) {
+//             const defaultTier = await influencer_tier.findOne({
+//                 order: [['min_successful_purchases', 'ASC']],
+//                 limit: 1
+//             });
+
+//             if (defaultTier) {
+//                 tierIdToUse = defaultTier.tier_id;
+//             } else {
+//                 return res.status(400).json({
+//                     success: false,
+//                     message: 'No tier available and none specified'
+//                 });
+//             }
+//         }
+
+//         const tierInfo = await influencer_tier.findByPk(tierIdToUse);
+//         if (!tierInfo) {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: 'Specified tier not found'
+//             });
+//         }
+
+//         await application.update({
+//             status: 'active',
+//             tier_id: tierIdToUse,
+//             status_reason: '',
+//             modified_at: new Date()
+//         });
+
+//         try {
+//             await emailService.sendKolApprovalEmail(application.user, tierInfo);
+//             logger.info(`Approval email sent to KOL ${application.user.email}`);
+//         } catch (emailError) {
+//             logger.error(`Failed to send approval email: ${emailError.message}`, { stack: emailError.stack });
+//         }
+
+//         res.status(200).json({
+//             success: true,
+//             message: 'Application approved successfully',
+//             data: {
+//                 influencer_id: application.influencer_id,
+//                 user: {
+//                     username: application.user.username,
+//                     email: application.user.email
+//                 },
+//                 status: 'active',
+//                 tier_id: tierIdToUse
+//             },
+//             email_sent: true
+//         });
+
+//     } catch (error) {
+//         logger.error(`Error approving KOL application: ${error.message}`, { stack: error.stack });
+//         res.status(500).json({
+//             success: false,
+//             message: 'Failed to approve application',
+//             error: error.message
+//         });
+//     }
+// };
+
 exports.approveApplication = async (req, res) => {
     try {
         const { id } = req.params;
         const { tier_id } = req.body;
 
-        const application = await influencer.findOne({
-            where: {
-                influencer_id: id,
-                status: 'pending'
-            },
-            include: [
-                {
-                    model: users,
-                    as: 'user'
-                }
-            ]
-        });
+        const transaction = await sequelize.transaction();
 
-        if (!application) {
-            return res.status(404).json({
-                success: false,
-                message: 'Pending application not found'
-            });
-        }
-
-        let tierIdToUse = tier_id;
-        if (!tierIdToUse) {
-            const defaultTier = await influencer_tier.findOne({
-                order: [['min_successful_purchases', 'ASC']],
-                limit: 1
+        try {
+            const application = await influencer.findOne({
+                where: {
+                    influencer_id: id,
+                    status: 'pending'
+                },
+                include: [
+                    {
+                        model: users,
+                        as: 'user'
+                    }
+                ],
+                transaction
             });
 
-            if (defaultTier) {
-                tierIdToUse = defaultTier.tier_id;
-            } else {
-                return res.status(400).json({
+            if (!application) {
+                await transaction.rollback();
+                return res.status(404).json({
                     success: false,
-                    message: 'No tier available and none specified'
+                    message: 'Pending application not found'
                 });
             }
-        }
 
-        // Get tier information for email
-        const tierInfo = await influencer_tier.findByPk(tierIdToUse);
-        if (!tierInfo) {
-            return res.status(400).json({
-                success: false,
-                message: 'Specified tier not found'
-            });
-        }
+            let tierIdToUse = tier_id;
+            if (!tierIdToUse) {
+                const defaultTier = await influencer_tier.findOne({
+                    order: [['min_successful_purchases', 'ASC']],
+                    limit: 1,
+                    transaction
+                });
 
-        await application.update({
-            status: 'active',
-            tier_id: tierIdToUse,
-            status_reason: '',
-            modified_at: new Date()
-        });
+                if (defaultTier) {
+                    tierIdToUse = defaultTier.tier_id;
+                } else {
+                    await transaction.rollback();
+                    return res.status(400).json({
+                        success: false,
+                        message: 'No tier available and none specified'
+                    });
+                }
+            }
 
-        // Send approval email notification
-        try {
-            await emailService.sendKolApprovalEmail(application.user, tierInfo);
-            logger.info(`Approval email sent to KOL ${application.user.email}`);
-        } catch (emailError) {
-            logger.error(`Failed to send approval email: ${emailError.message}`, { stack: emailError.stack });
-            // Continue with the response even if email fails
-        }
+            const tierInfo = await influencer_tier.findByPk(tierIdToUse, { transaction });
+            if (!tierInfo) {
+                await transaction.rollback();
+                return res.status(400).json({
+                    success: false,
+                    message: 'Specified tier not found'
+                });
+            }
 
-        res.status(200).json({
-            success: true,
-            message: 'Application approved successfully',
-            data: {
-                influencer_id: application.influencer_id,
-                user: {
-                    username: application.user.username,
-                    email: application.user.email
-                },
+            await application.update({
                 status: 'active',
-                tier_id: tierIdToUse
-            },
-            email_sent: true
-        });
+                tier_id: tierIdToUse,
+                status_reason: '',
+                modified_at: new Date()
+            }, { transaction });
+
+            await sequelize.models.user_role.create({
+                user_id: application.user_id,
+                role_id: 3
+            }, { transaction });
+
+            await transaction.commit();
+
+            try {
+                await emailService.sendKolApprovalEmail(application.user, tierInfo);
+                logger.info(`Approval email sent to KOL ${application.user.email}`);
+            } catch (emailError) {
+                logger.error(`Failed to send approval email: ${emailError.message}`, { stack: emailError.stack });
+            }
+
+            res.status(200).json({
+                success: true,
+                message: 'Application approved successfully and influencer role assigned',
+                data: {
+                    influencer_id: application.influencer_id,
+                    user: {
+                        username: application.user.username,
+                        email: application.user.email
+                    },
+                    status: 'active',
+                    tier_id: tierIdToUse
+                },
+                email_sent: true
+            });
+
+        } catch (error) {
+            await transaction.rollback();
+            throw error;
+        }
 
     } catch (error) {
         logger.error(`Error approving KOL application: ${error.message}`, { stack: error.stack });
