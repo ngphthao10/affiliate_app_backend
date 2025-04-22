@@ -17,13 +17,40 @@ const Op = Sequelize.Op;
 exports.getKolDashboardStats = async (req, res) => {
     try {
         const { influencerId } = req.params;
-        const { startDate, endDate } = req.query;
+        let { startDate, endDate } = req.query;
 
         if (!influencerId) {
             return res.status(400).json({
                 success: false,
                 message: "Influencer ID is required"
             });
+        }
+
+        // Nếu không có endDate, sử dụng ngày hiện tại (kết thúc ngày hôm nay)
+        if (!endDate) {
+            const today = new Date();
+            // Đặt thời gian là cuối ngày hiện tại (23:59:59.999)
+            today.setHours(23, 59, 59, 999);
+            endDate = today.toISOString();
+        } else {
+            // Nếu có endDate, đảm bảo nó bao gồm đến cuối ngày
+            const end = new Date(endDate);
+            end.setHours(23, 59, 59, 999);
+            endDate = end.toISOString();
+        }
+
+        // Nếu không có startDate, lấy dữ liệu từ 30 ngày trước đến hiện tại
+        if (!startDate) {
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            // Đặt thời gian là đầu ngày (00:00:00.000)
+            thirtyDaysAgo.setHours(0, 0, 0, 0);
+            startDate = thirtyDaysAgo.toISOString();
+        } else {
+            // Nếu có startDate, đảm bảo nó bắt đầu từ đầu ngày
+            const start = new Date(startDate);
+            start.setHours(0, 0, 0, 0);
+            startDate = start.toISOString();
         }
 
         const influencerData = await influencer.findOne({
@@ -44,6 +71,7 @@ exports.getKolDashboardStats = async (req, res) => {
 
         const tierCommissionRate = influencerData.tier?.commission_rate || 0;
 
+        // Thiết lập bộ lọc ngày cho MongoDB
         const dateFilter = {};
         if (startDate && endDate) {
             dateFilter.date = {
@@ -52,6 +80,7 @@ exports.getKolDashboardStats = async (req, res) => {
             };
         }
 
+        // Lấy thống kê clicks từ MongoDB
         const clickStats = await KolAffiliateStats.aggregate([
             {
                 $match: {
@@ -67,6 +96,7 @@ exports.getKolDashboardStats = async (req, res) => {
             }
         ]);
 
+        // Lấy tất cả các liên kết tiếp thị của influencer
         const affiliateLinks = await influencer_affiliate_link.findAll({
             where: {
                 influencer_id: influencerId
@@ -81,6 +111,7 @@ exports.getKolDashboardStats = async (req, res) => {
 
         const linkIds = affiliateLinks.map(link => link.link_id);
 
+        // Tạo map để tra cứu thông tin sản phẩm theo link_id
         const linkToProductMap = {};
         affiliateLinks.forEach(link => {
             linkToProductMap[link.link_id] = {
@@ -91,6 +122,7 @@ exports.getKolDashboardStats = async (req, res) => {
             };
         });
 
+        // Lấy thống kê đơn hàng với bộ lọc thời gian đã điều chỉnh
         const orderStats = await order_item.findOne({
             attributes: [
                 [sequelize.fn('COUNT', sequelize.fn('DISTINCT', sequelize.col('order.order_id'))), 'total_orders'],
@@ -111,11 +143,10 @@ exports.getKolDashboardStats = async (req, res) => {
                         status: {
                             [Op.notIn]: ['cancelled', 'returned']
                         },
-                        ...(startDate && endDate ? {
-                            creation_at: {
-                                [Op.between]: [new Date(startDate), new Date(endDate)]
-                            }
-                        } : {})
+                        // Sử dụng startDate và endDate đã xử lý
+                        creation_at: {
+                            [Op.between]: [new Date(startDate), new Date(endDate)]
+                        }
                     }
                 }
             ],
@@ -127,6 +158,7 @@ exports.getKolDashboardStats = async (req, res) => {
             raw: true
         });
 
+        // Lấy thống kê theo sản phẩm với bộ lọc thời gian đã điều chỉnh
         const productStats = await order_item.findAll({
             attributes: [
                 'link_id',
@@ -147,11 +179,10 @@ exports.getKolDashboardStats = async (req, res) => {
                         status: {
                             [Op.notIn]: ['cancelled', 'returned']
                         },
-                        ...(startDate && endDate ? {
-                            creation_at: {
-                                [Op.between]: [new Date(startDate), new Date(endDate)]
-                            }
-                        } : {})
+                        // Sử dụng startDate và endDate đã xử lý
+                        creation_at: {
+                            [Op.between]: [new Date(startDate), new Date(endDate)]
+                        }
                     }
                 }
             ],
@@ -165,6 +196,7 @@ exports.getKolDashboardStats = async (req, res) => {
             raw: true
         });
 
+        // Xử lý thống kê sản phẩm
         const productPerformance = {};
 
         productStats.forEach(stat => {
@@ -200,10 +232,12 @@ exports.getKolDashboardStats = async (req, res) => {
             productPerformance[productId].commission += totalCommission;
         });
 
+        // Lấy top 5 sản phẩm bán chạy nhất
         const topProducts = Object.values(productPerformance)
             .sort((a, b) => b.total_sold - a.total_sold)
             .slice(0, 5);
 
+        // Tính toán tổng số liệu
         const totalSales = parseFloat(orderStats?.total_sales || 0);
         const totalOrders = parseInt(orderStats?.total_orders || 0);
         const totalQuantity = parseInt(orderStats?.total_quantity || 0);
@@ -213,9 +247,14 @@ exports.getKolDashboardStats = async (req, res) => {
             totalCommission += product.commission;
         });
 
+        // Trả về kết quả
         res.status(200).json({
             success: true,
             data: {
+                time_range: {
+                    start_date: startDate,
+                    end_date: endDate
+                },
                 clicks: clickStats[0]?.totalClicks || 0,
                 total_orders: totalOrders,
                 total_quantity: totalQuantity,

@@ -93,7 +93,11 @@ exports.generateKolConversionReport = async (options = {}) => {
                     summary: {
                         total_orders: 0,
                         total_revenue: 0,
-                        total_commission: 0
+                        commission: {
+                            product: 0,
+                            tier: 0,
+                            total: 0
+                        }
                     },
                     period: {
                         start: startDate ? moment(startDate).format('YYYY-MM-DD') : null,
@@ -131,7 +135,6 @@ exports.generateKolConversionReport = async (options = {}) => {
         };
     }
 };
-
 function processOrderItems(orderItems) {
     return orderItems.map(item => {
         const orderDate = item.creation_at;
@@ -207,7 +210,7 @@ function groupReportData(data, groupBy) {
                             product: 0,
                             tier: 0,
                             total: 0
-                        },
+                        } || [],
                         kols: new Set(),
                         products: new Set()
                     };
@@ -254,7 +257,7 @@ function groupReportData(data, groupBy) {
                             product: 0,
                             tier: 0,
                             total: 0
-                        }
+                        } || []
                     };
                 }
 
@@ -297,7 +300,7 @@ function groupReportData(data, groupBy) {
                             product: 0,
                             tier: 0,
                             total: 0
-                        }
+                        } || []
                     };
                 }
 
@@ -346,12 +349,11 @@ exports.getReport = async (req, res) => {
     try {
         const { influencerId } = req.params;
         const { start_date, end_date, product_id, group_by } = req.query;
-
         const report = await generateKolConversionReport({
             kolId: parseInt(influencerId),
             startDate: start_date,
             endDate: end_date,
-            productId: product_id ? parseInt(product_id) : undefined,
+            productId: product_id ? parseInt(product_id) : '',
             groupBy: group_by || 'month'
         });
 

@@ -1,6 +1,7 @@
-const { order, order_item, users, user_address, product, product_inventory, payment, Sequelize } = require('../models/mysql');
+const { order, order_item, users, user_address, product, product_inventory, payment, Sequelize, sequelize, influencer_affiliate_link } = require('../models/mysql');
 const logger = require('../utils/logger');
 const Op = Sequelize.Op;
+const mongoose = require('mongoose')
 
 const listOrders = async (req, res) => {
     try {
@@ -206,50 +207,14 @@ const getOrderDetails = async (req, res) => {
     }
 };
 
-const updateOrderStatus = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { status } = req.body;
-
-        const validStatuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'returned'];
-        if (!validStatuses.includes(status)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid order status'
-            });
-        }
-
-        const orderDetails = await order.findByPk(id);
-        if (!orderDetails) {
-            return res.status(404).json({
-                success: false,
-                message: 'Order not found'
-            });
-        }
-
-        await orderDetails.update({
-            status: status,
-            modified_at: new Date()
-        });
-
-        res.status(200).json({
-            success: true,
-            message: 'Order status updated successfully'
-        });
-    } catch (error) {
-        logger.error(`Error updating order status: ${error.message}`, { stack: error.stack });
-        res.status(500).json({
-            success: false,
-            message: 'Failed to update order status',
-            error: error.message
-        });
-    }
-};
-
 const getOrdersByDate = async (req, res) => {
     try {
         const { date } = req.query;
-        logger.info(`Fetching orders for date: ${date}`);
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const offset = (page - 1) * limit;
+
+        logger.info(`Fetching orders for date: ${date}, page: ${page}, limit: ${limit}`);
 
         if (!date) {
             return res.status(400).json({
@@ -258,8 +223,14 @@ const getOrdersByDate = async (req, res) => {
             });
         }
 
+        // First, get the total count for pagination
+        const totalOrders = await order.count({
+            where: Sequelize.literal(`DATE(order.creation_at) = DATE('${date}')`)
+        });
+
+        // Then fetch the paginated results
         const orders = await order.findAll({
-            where: Sequelize.literal(`DATE(\`order\`.\`creation_at\`) = DATE('${date}')`),
+            where: Sequelize.literal(`DATE(order.creation_at) = DATE('${date}')`),
             include: [
                 {
                     model: users,
@@ -274,7 +245,9 @@ const getOrdersByDate = async (req, res) => {
                     limit: 1
                 }
             ],
-            order: [[Sequelize.col('order.creation_at'), 'DESC']]
+            order: [[Sequelize.col('order.creation_at'), 'DESC']],
+            limit: limit,
+            offset: offset
         });
 
         logger.info(`Found ${orders.length} orders for date ${date}`);
@@ -294,7 +267,13 @@ const getOrdersByDate = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            orders: formattedOrders
+            orders: formattedOrders,
+            pagination: {
+                total: totalOrders,
+                page: page,
+                limit: limit,
+                pages: Math.ceil(totalOrders / limit)
+            }
         });
     } catch (error) {
         logger.error(`Error getting orders by date: ${error.message}`, { stack: error.stack });
@@ -305,4 +284,203 @@ const getOrdersByDate = async (req, res) => {
         });
     }
 };
+const updateOrderStatus = async (req, res) => {
+    const transaction = await sequelize.transaction();
+    try {
+        const { id } = req.params;
+        const { status } = req.body; // Get status from body
+
+        const orderId = id;
+
+        if (!orderId || !status) {
+            await transaction.rollback();
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required fields: orderId and status are required',
+            });
+        }
+
+        const validStatuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'returned'];
+        if (!validStatuses.includes(status)) {
+            await transaction.rollback();
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid order status',
+            });
+        }
+
+        const orderDetails = await order.findByPk(orderId, { transaction });
+        if (!orderDetails) {
+            await transaction.rollback();
+            return res.status(404).json({
+                success: false,
+                message: 'Order not found',
+            });
+        }
+
+        // Get previous status before update
+        const previousStatus = orderDetails.status;
+
+        // Check if we're cancelling or returning an order
+        const isReturnOrCancel = ['cancelled', 'returned'].includes(status);
+        const wasReturnOrCancel = ['cancelled', 'returned'].includes(previousStatus);
+
+        if (isReturnOrCancel && !wasReturnOrCancel) {
+            // We're changing to cancelled/returned for the first time
+            logger.info(`Order ${orderId} is being ${status}, updating inventory quantities`);
+
+            // Get order items to restore inventory
+            const items = await order_item.findAll({
+                where: { order_id: orderId },
+                include: [
+                    {
+                        model: product_inventory,
+                        as: 'inventory'
+                    }
+                ],
+                transaction
+            });
+
+            // Loop through items and update inventory
+            for (const item of items) {
+                if (item.inventory) {
+                    // Add the quantity back to inventory
+                    await product_inventory.increment(
+                        'quantity',
+                        {
+                            by: item.quantity,
+                            where: { inventory_id: item.inventory_id }
+                        },
+                        { transaction }
+                    );
+
+                    logger.info(`Returned ${item.quantity} units to inventory_id ${item.inventory_id}`);
+
+                    // Check if we need to update the out_of_stock status on the product
+                    const inventory = await product_inventory.findByPk(item.inventory_id, { transaction });
+                    if (inventory) {
+                        // Check if this was the only inventory item for this product that was out of stock
+                        const productInvCount = await product_inventory.count({
+                            where: {
+                                product_id: inventory.product_id,
+                                quantity: { [Op.gt]: 0 }
+                            },
+                            transaction
+                        });
+
+                        if (productInvCount > 0) {
+                            // There is at least one inventory item for this product with quantity > 0
+                            // Update the product's out_of_stock status to false
+                            await product.update(
+                                { out_of_stock: false },
+                                {
+                                    where: { product_id: inventory.product_id },
+                                    transaction
+                                }
+                            );
+
+                            logger.info(`Updated out_of_stock to false for product_id ${inventory.product_id}`);
+                        }
+                    }
+                }
+            }
+        } else if (!isReturnOrCancel && wasReturnOrCancel) {
+            // We're changing from cancelled/returned to another status
+            // We should remove inventory quantities again
+            logger.info(`Order ${orderId} is changing from ${previousStatus} to ${status}, adjusting inventory quantities`);
+
+            // Use the stored procedure to update inventory
+            await sequelize.query(
+                'CALL update_inventory_on_order(:orderId, :status)',
+                {
+                    replacements: { orderId, status },
+                    transaction,
+                }
+            );
+        }
+
+        // Update the order status
+        await orderDetails.update({
+            status: status,
+            modified_at: new Date(),
+        }, { transaction });
+
+        // Only increment KOL stats when status changes to 'delivered'
+        if (status === 'delivered' && previousStatus !== 'delivered') {
+            logger.info(`Order ${orderId} has been delivered, incrementing KOL stats`);
+
+            // Find all order items with affiliate links
+            const orderItems = await order_item.findAll({
+                where: {
+                    order_id: orderId,
+                    link_id: { [Op.ne]: null } // Only items with affiliate links
+                },
+                transaction
+            });
+
+            // Update KOL stats for each item with an affiliate link
+            for (const item of orderItems) {
+                if (item.link_id) {
+                    // Get the product_id and influencer_id from the link
+                    const link = await influencer_affiliate_link.findByPk(item.link_id, {
+                        attributes: ['influencer_id', 'product_id'],
+                        transaction
+                    });
+
+                    if (link && link.influencer_id && link.product_id) {
+                        await updateKolStats(link.influencer_id, link.product_id);
+                        logger.info(`Incremented KOL stats for order ${orderId}: influencer ${link.influencer_id}, product ${link.product_id}`);
+                    }
+                }
+            }
+        }
+
+        await transaction.commit();
+
+        res.status(200).json({
+            success: true,
+            message: 'Order status updated successfully',
+        });
+    } catch (error) {
+        await transaction.rollback();
+        logger.error(`Error updating order status: ${error.message}`, { stack: error.stack });
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update order status',
+            error: error.message,
+        });
+
+    }
+};
+
+const updateKolStats = async (influencerId, productId) => {
+    try {
+        if (!influencerId || !productId) {
+            return;
+        }
+
+        const KolAffiliateStats = mongoose.model('KolAffiliateStats');
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        await KolAffiliateStats.updateOne(
+            {
+                kol_id: influencerId,
+                product_id: productId,
+                date: {
+                    $gte: today,
+                    $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000)
+                }
+            },
+            { $inc: { successful_purchases: 1 } },
+            { upsert: true }
+        );
+
+        logger.info(`KOL stats incremented for influencer ${influencerId}, product ${productId}`);
+    } catch (error) {
+        logger.error(`Error updating KOL stats: ${error.message}`, { stack: error.stack });
+    }
+};
+
 module.exports = { listOrders, getOrderDetails, updateOrderStatus, getOrdersByDate };

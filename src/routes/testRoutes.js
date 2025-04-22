@@ -5,4 +5,5 @@ const testController = require('../controllers/testController');
 router.get('/purchase-page', testController.showTestPurchasePage);
 router.post('/simulate-purchase', testController.simulatePurchase);
 
+
 module.exports = router;
