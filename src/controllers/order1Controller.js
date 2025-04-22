@@ -243,13 +243,13 @@ const createPayment = async (orderId, amount, paymentMethod, transaction) => {
     if (!orderExists) {
       throw new Error(`Order with order_id ${orderId} does not exist`);
     }
-
+    const status = paymentMethod === 'cod' ? 'pending' : 'completed';
     const newPayment = await payment.create(
       {
         order_id: orderId,
         amount,
         payment_method: paymentMethod,
-        status: 'completed',
+        status,
          // Thêm transaction_id nếu cần
       },
       { transaction }
