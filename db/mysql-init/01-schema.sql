@@ -301,7 +301,82 @@ CREATE TABLE kol_payout (
   modified_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (kol_id) REFERENCES influencer(influencer_id)
 );
+DELIMITER //
+CREATE PROCEDURE `update_inventory_on_order`(IN orderId INT, IN new_status VARCHAR(50))
+BEGIN
+    DECLARE done INT DEFAULT FALSE;
+    DECLARE curr_inventory_id INT;
+    DECLARE curr_quantity INT;
+    DECLARE curr_available_quantity INT;
+    DECLARE error_message VARCHAR(255);
+    DECLARE cur CURSOR FOR 
+        SELECT inventory_id, quantity 
+        FROM order_item 
+        WHERE order_id = orderId;
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
 
+    -- Kiểm tra trạng thái hợp lệ
+    IF new_status NOT IN ('pending', 'processing', 'shipped', 'delivered', 'cancelled', 'returned') THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Invalid order status';
+    END IF;
+
+    IF new_status IN ('cancelled', 'returned') THEN
+        OPEN cur;
+        read_loop: LOOP
+            FETCH cur INTO curr_inventory_id, curr_quantity;
+            IF done THEN
+                LEAVE read_loop;
+            END IF;
+            -- Tăng số lượng tồn kho
+            UPDATE product_inventory
+            SET quantity = quantity + curr_quantity
+            WHERE inventory_id = curr_inventory_id;
+        END LOOP;
+        CLOSE cur;
+    ELSE
+        OPEN cur;
+        read_loop: LOOP
+            FETCH cur INTO curr_inventory_id, curr_quantity;
+            IF done THEN
+                LEAVE read_loop;
+            END IF;
+            -- Kiểm tra số lượng tồn kho trước khi cập nhật
+            SELECT quantity INTO curr_available_quantity
+            FROM product_inventory
+            WHERE inventory_id = curr_inventory_id;
+            
+            IF curr_available_quantity < curr_quantity THEN
+                -- Tạo thông điệp lỗi thủ công
+                SET error_message = 'Insufficient inventory quantity for inventory_id: ';
+                SET error_message = CONCAT(error_message, CAST(curr_inventory_id AS CHAR));
+                SET error_message = CONCAT(error_message, '. Requested: ');
+                SET error_message = CONCAT(error_message, CAST(curr_quantity AS CHAR));
+                SET error_message = CONCAT(error_message, ', Available: ');
+                SET error_message = CONCAT(error_message, CAST(curr_available_quantity AS CHAR));
+                
+                SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = error_message;
+            END IF;
+            
+            -- Trừ số lượng tồn kho
+            UPDATE product_inventory
+            SET quantity = quantity - curr_quantity
+            WHERE inventory_id = curr_inventory_id;
+        END LOOP;
+        CLOSE cur;
+    END IF;
+
+    -- Cập nhật out_of_stock
+    UPDATE product p
+    JOIN (
+        SELECT product_id, SUM(quantity) AS total_quantity
+        FROM product_inventory
+        GROUP BY product_id
+    ) pi ON p.product_id = pi.product_id
+    SET p.out_of_stock = (pi.total_quantity = 0);
+END//
+DELIMITER ;
 -- Insert default roles
 INSERT INTO roles (role_name, description) VALUES 
 ('admin', 'Administrator with full access'),
