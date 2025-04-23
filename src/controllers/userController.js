@@ -1,7 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Sequelize = require('sequelize')
-const { users, influencer, roles, user_role } = require('../models/mysql');
+const { users, influencer, roles, user_role,influencer_social_link } = require('../models/mysql');
 const logger = require('../utils/logger');
 const validator = require('validator');
 require('dotenv').config();
@@ -424,4 +424,90 @@ const changePassword = async (req, res) => {
         });
     }
 };
-module.exports = { registerUser, loginUser, adminLogin, kolLogin,getUser,updateUser,changePassword };
+const registerInfluencer = async (req, res) => {
+    try {
+      const { user_id, status, status_reason, tier_id, social_link } = req.body;
+  
+      // Kiểm tra thông tin đầu vào
+      if (!user_id || !status || !tier_id || !social_link || !social_link.platform || !social_link.profile_link) {
+        logger.warn('Thiếu thông tin cần thiết khi đăng ký KOL:', { user_id, status, tier_id, social_link });
+        return res.status(400).json({ success: false, message: 'Vui lòng cung cấp đầy đủ thông tin.' });
+      }
+  
+      // Kiểm tra xem người dùng đã đăng ký KOL chưa
+      const existingInfluencer = await influencer.findOne({ where: { user_id } });
+      if (existingInfluencer) {
+        logger.warn('Người dùng đã đăng ký KOL:', { user_id });
+        return res.status(400).json({ success: false, message: 'Bạn đã đăng ký KOL rồi.' });
+      }
+  
+      // Kiểm tra xem user_id có tồn tại trong bảng users không
+      const user = await users.findByPk(user_id);
+      if (!user) {
+        logger.warn('Không tìm thấy người dùng:', { user_id });
+        return res.status(404).json({ success: false, message: 'Người dùng không tồn tại.' });
+      }
+  
+      // Thêm bản ghi vào bảng influencer
+      const newInfluencer = await influencer.create({
+        user_id,
+        status: status || 'pending', // Mặc định là pending
+        status_reason: status_reason || null,
+        tier_id: tier_id || 1, // Mặc định là 1 (hạng thường)
+        modified_at: new Date(),
+      });
+  
+      // Thêm bản ghi vào bảng influencer_social_link
+      await influencer_social_link.create({
+        influencer_id: newInfluencer.influencer_id,
+        platform: social_link.platform,
+        profile_link: social_link.profile_link,
+      });
+  
+      logger.info('Đăng ký KOL thành công:', { user_id, influencer_id: newInfluencer.influencer_id });
+      return res.status(200).json({ success: true, message: 'Đăng ký KOL thành công! Vui lòng chờ xét duyệt.' });
+    } catch (error) {
+      logger.error('Lỗi khi đăng ký KOL:', error);
+      return res.status(500).json({ success: false, message: 'Lỗi hệ thống. Vui lòng thử lại sau.' });
+    }
+  };
+  
+  // Gán vai trò cho người dùng (ví dụ: vai trò KOL)
+  const assignRole = async (req, res) => {
+    try {
+      const { user_id, role_id } = req.body;
+  
+      // Kiểm tra thông tin đầu vào
+      if (!user_id || !role_id) {
+        logger.warn('Thiếu thông tin khi gán vai trò:', { user_id, role_id });
+        return res.status(400).json({ success: false, message: 'Vui lòng cung cấp user_id và role_id.' });
+      }
+  
+      // Kiểm tra xem user_id có tồn tại không
+      const user = await users.findByPk(user_id);
+      if (!user) {
+        logger.warn('Không tìm thấy người dùng:', { user_id });
+        return res.status(404).json({ success: false, message: 'Người dùng không tồn tại.' });
+      }
+  
+      // Kiểm tra xem vai trò đã được gán chưa
+      const existingRole = await user_role.findOne({ where: { user_id, role_id } });
+      if (existingRole) {
+        logger.warn('Vai trò đã được gán:', { user_id, role_id });
+        return res.status(400).json({ success: false, message: 'Vai trò này đã được gán cho người dùng.' });
+      }
+  
+      // Thêm bản ghi vào bảng user_role
+      await user_role.create({
+        user_id,
+        role_id,
+      });
+  
+      logger.info('Gán vai trò thành công:', { user_id, role_id });
+      return res.status(200).json({ success: true, message: 'Gán vai trò thành công!' });
+    } catch (error) {
+      logger.error('Lỗi khi gán vai trò:', error);
+      return res.status(500).json({ success: false, message: 'Lỗi hệ thống. Vui lòng thử lại sau.' });
+    }
+  };
+module.exports = { registerUser, loginUser, adminLogin, kolLogin,getUser,updateUser,changePassword,registerInfluencer,assignRole };
