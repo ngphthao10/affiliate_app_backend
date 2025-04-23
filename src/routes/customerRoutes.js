@@ -7,7 +7,6 @@ const {
     deleteCustomer
 } = require('../controllers/customerController');
 const adminAuth = require('../middlewares/adminAuth');
-
 const router = express.Router();
 
 router.get('/', adminAuth, listCustomers);

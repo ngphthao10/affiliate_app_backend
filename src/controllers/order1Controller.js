@@ -1102,7 +1102,7 @@ const getOrderItems = async (req, res) => {
             {
               model: product,
               as: 'product',
-              attributes: ['name', 'small_image'], // Sử dụng small_image thay vì image
+              attributes: ['product_id','name', 'small_image'], // Sử dụng small_image thay vì image
             },
           ],
         },
@@ -1119,6 +1119,7 @@ const getOrderItems = async (req, res) => {
     console.log('Order Items:', JSON.stringify(orderItems, null, 2));
 
     const formattedItems = orderItems.map((item) => ({
+      product_id: item.inventory.product.product_id,
       name: item.inventory.product.name,
       image: item.inventory.product.small_image ? [item.inventory.product.small_image] : [], // Đảm bảo image là mảng
       price: item.inventory.price, // Lấy price từ product_inventory
