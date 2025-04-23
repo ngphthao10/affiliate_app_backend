@@ -28,20 +28,13 @@ const order1Routes = require('./routes/order1Routes');
 
 const app = express();
 app.use(cookieParser());
-// app.use(helmet()); // Security headers
-app.use(cors()); // CORS handling
+app.use(helmet());
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json()); // Parse JSON bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 app.use(morgan('dev', { stream: { write: message => logger.info(message.trim()) } })); // HTTP request logging
 
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
-
-// using for test cookies --- delete ==================
-app.use(helmet.crossOriginResourcePolicy({ policy: "cross-origin" }));
-app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, 'views'));
-const testRoutes = require('./routes/testRoutes');
-app.use('/api/test', testRoutes);
 
 // =====================================================
 
