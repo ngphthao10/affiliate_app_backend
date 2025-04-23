@@ -1,16 +1,4 @@
-const {
-    kol_payout,
-    influencer,
-    users,
-    influencer_affiliate_link,
-    order_item,
-    order,
-    product,
-    influencer_tier,
-    product_inventory,
-    Sequelize,
-    sequelize
-} = require('../models/mysql');
+const { kol_payout, influencer, users, influencer_affiliate_link, order_item, order, product, influencer_tier, product_inventory, Sequelize, sequelize } = require('../models/mysql');
 const logger = require('../utils/logger');
 const XLSX = require('xlsx');
 const Op = Sequelize.Op;
@@ -174,10 +162,9 @@ exports.getPayouts = async (req, res) => {
     }
 };
 
-
 exports.generatePayouts = async (req, res) => {
     try {
-        const { start_date, end_date, influencer_id } = req.body;
+        const { start_date, end_date, influencer_ids } = req.body;
 
         if (!start_date || !end_date) {
             return res.status(400).json({
@@ -186,7 +173,15 @@ exports.generatePayouts = async (req, res) => {
             });
         }
 
+        if (!influencer_ids || !Array.isArray(influencer_ids) || influencer_ids.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'At least one influencer must be selected for payout generation'
+            });
+        }
+
         const result = await sequelize.transaction(async (t) => {
+            // Find all orders in the date range that should be included in payouts
             const orderWhereConditions = {
                 creation_at: {
                     [Op.between]: [start_date, end_date]
@@ -196,8 +191,38 @@ exports.generatePayouts = async (req, res) => {
                 }
             };
 
-            const influencerCondition = influencer_id ? { influencer_id } : {};
+            // Check for existing payouts to avoid duplicates
+            const existingPayouts = await kol_payout.findAll({
+                where: {
+                    kol_id: {
+                        [Op.in]: influencer_ids
+                    },
+                    payment_status: {
+                        [Op.in]: ['completed', 'pending']
+                    },
+                    created_at: {
+                        [Op.gte]: start_date
+                    }
+                },
+                attributes: ['kol_id'],
+                transaction: t
+            });
 
+            // Filter out influencers who already have payouts
+            const paidInfluencerIds = existingPayouts.map(p => p.kol_id);
+            const eligibleInfluencerIds = influencer_ids.filter(id => !paidInfluencerIds.includes(parseInt(id)));
+
+            if (eligibleInfluencerIds.length === 0) {
+                await t.rollback();
+                return {
+                    payouts: [],
+                    totalPayouts: 0,
+                    totalAmount: 0,
+                    skippedInfluencers: paidInfluencerIds
+                };
+            }
+
+            // Get all eligible order items
             const orderItems = await order_item.findAll({
                 include: [
                     {
@@ -209,7 +234,11 @@ exports.generatePayouts = async (req, res) => {
                     {
                         model: influencer_affiliate_link,
                         as: 'link',
-                        where: influencerCondition,
+                        where: {
+                            influencer_id: {
+                                [Op.in]: eligibleInfluencerIds
+                            }
+                        },
                         include: [
                             {
                                 model: influencer,
@@ -219,6 +248,11 @@ exports.generatePayouts = async (req, res) => {
                                         model: influencer_tier,
                                         as: 'tier',
                                         attributes: ['tier_id', 'tier_name', 'commission_rate']
+                                    },
+                                    {
+                                        model: users,
+                                        as: 'user',
+                                        attributes: ['username', 'email', 'first_name', 'last_name']
                                     }
                                 ]
                             },
@@ -238,31 +272,73 @@ exports.generatePayouts = async (req, res) => {
                 transaction: t
             });
 
-            const influencerCommissions = {};
-
-            for (const item of orderItems) {
-                const influencerId = item.link.influencer_id;
+            // Process order items like in the kolReportController
+            const processedItems = orderItems.map(item => {
                 const itemPrice = item.inventory?.price || 0;
                 const itemTotal = parseFloat(item.quantity) * parseFloat(itemPrice);
 
-                const tierCommissionRate = parseFloat(item.link.influencer.tier.commission_rate) / 100;
-                const productCommissionRate = parseFloat(item.link.product.commission_rate || 0) / 100;
+                const kol = item.link?.influencer;
+                const kolUser = kol?.user;
 
-                const effectiveCommissionRate = productCommissionRate > 0 ? productCommissionRate : tierCommissionRate;
+                const prod = item.link?.product;
 
-                const commissionAmount = itemTotal * effectiveCommissionRate;
+                // Get commission rates (using percentage values as stored in database)
+                const productCommissionRate = prod?.commission_rate || 0;
+                const tierCommissionRate = kol?.tier?.commission_rate || 0;
+
+                // Calculate commissions
+                const productCommission = (itemTotal * productCommissionRate) / 100;
+                const tierCommission = (itemTotal * tierCommissionRate) / 100;
+
+                return {
+                    order_id: item.order_id,
+                    order_item_id: item.order_item_id,
+                    influencer_id: kol?.influencer_id,
+                    influencer: kol,
+                    user: kolUser,
+                    itemTotal,
+                    quantity: item.quantity,
+                    commission: {
+                        product_rate: productCommissionRate,
+                        tier_rate: tierCommissionRate,
+                        product_amount: productCommission,
+                        tier_amount: tierCommission
+                    }
+                };
+            });
+
+            // Track which orders have been processed to avoid duplicates
+            const processedOrderItems = new Set();
+            const influencerCommissions = {};
+
+            for (const item of processedItems) {
+                const influencerId = item.influencer_id;
+                if (!influencerId) continue;
+
+                const orderItemId = item.order_item_id;
+
+                // Skip if this order item has already been processed
+                const orderItemKey = `${item.order_id}_${orderItemId}`;
+                if (processedOrderItems.has(orderItemKey)) continue;
 
                 if (!influencerCommissions[influencerId]) {
                     influencerCommissions[influencerId] = {
-                        influencer: item.link.influencer,
+                        influencer: item.influencer,
+                        user: item.user,
+                        productCommission: 0,
+                        tierCommission: 0,
                         totalCommission: 0,
-                        orderCount: 0,
-                        orders: new Set()
+                        orders: new Set(),
+                        orderItems: new Set()
                     };
                 }
 
-                influencerCommissions[influencerId].totalCommission += commissionAmount;
+                influencerCommissions[influencerId].productCommission += item.commission.product_amount;
+                influencerCommissions[influencerId].tierCommission += item.commission.tier_amount;
+                influencerCommissions[influencerId].totalCommission += item.commission.product_amount + item.commission.tier_amount;
                 influencerCommissions[influencerId].orders.add(item.order_id);
+                influencerCommissions[influencerId].orderItems.add(orderItemId);
+                processedOrderItems.add(orderItemKey);
             }
 
             const payouts = [];
@@ -275,6 +351,7 @@ exports.generatePayouts = async (req, res) => {
                     total_amount: data.totalCommission.toFixed(2),
                     payment_status: 'pending',
                     payout_date: new Date(),
+                    notes: `Auto-generated payout for orders between ${start_date} and ${end_date}. Includes ${data.orders.size} orders.`,
                     created_at: new Date(),
                     modified_at: new Date()
                 }, { transaction: t });
@@ -282,23 +359,39 @@ exports.generatePayouts = async (req, res) => {
                 payouts.push({
                     payout_id: payout.payout_id,
                     kol_id: influencerId,
-                    kol_name: `${data.influencer.user?.first_name || ''} ${data.influencer.user?.last_name || ''}`.trim(),
+                    kol_name: `${data.user?.first_name || ''} ${data.user?.last_name || ''}`.trim(),
+                    username: data.user?.username,
+                    email: data.user?.email,
+                    commission: {
+                        product: data.productCommission.toFixed(2),
+                        tier: data.tierCommission.toFixed(2),
+                        total: data.totalCommission.toFixed(2)
+                    },
                     total_amount: payout.total_amount,
-                    order_count: data.orders.size
+                    order_count: data.orders.size,
+                    orderItems_count: data.orderItems.size
                 });
             }
 
             return {
                 payouts,
                 totalPayouts: payouts.length,
-                totalAmount: payouts.reduce((sum, p) => sum + parseFloat(p.total_amount), 0)
+                totalAmount: payouts.reduce((sum, p) => sum + parseFloat(p.total_amount), 0),
+                skippedInfluencers: paidInfluencerIds
             };
         });
 
+        // Create response message
+        let message = `Successfully generated ${result.totalPayouts} payouts totaling ${parseFloat(result.totalAmount).toFixed(2)}`;
+        if (result.skippedInfluencers && result.skippedInfluencers.length > 0) {
+            message += `. ${result.skippedInfluencers.length} influencer(s) were skipped because they already have pending or completed payouts for this period.`;
+        }
+
         res.status(200).json({
             success: true,
-            message: `Successfully generated ${result.totalPayouts} payouts totaling ${result.totalAmount.toFixed(2)}`,
-            payouts: result.payouts
+            message: message,
+            payouts: result.payouts,
+            skipped_count: result.skippedInfluencers ? result.skippedInfluencers.length : 0
         });
 
     } catch (error) {
@@ -407,34 +500,124 @@ exports.getPayoutDetails = async (req, res) => {
             });
         }
 
-        const relatedOrders = await order.findAll({
+        // Find related orders up to the payout creation date
+        const relatedOrderItems = await order_item.findAll({
             include: [
                 {
-                    model: order_item,
-                    as: 'order_items',
+                    model: order,
+                    as: 'order',
+                    where: {
+                        creation_at: {
+                            [Op.lte]: payout.created_at
+                        },
+                        status: {
+                            [Op.in]: ['delivered', 'completed']
+                        }
+                    }
+                },
+                {
+                    model: influencer_affiliate_link,
+                    as: 'link',
+                    where: {
+                        influencer_id: payout.kol_id
+                    },
                     include: [
                         {
-                            model: influencer_affiliate_link,
-                            as: 'link',
-                            where: {
-                                influencer_id: payout.kol_id
-                            }
+                            model: product,
+                            as: 'product',
+                            attributes: ['product_id', 'name', 'commission_rate']
                         }
                     ]
+                },
+                {
+                    model: product_inventory,
+                    as: 'inventory',
+                    attributes: ['price']
                 }
             ],
-            where: {
-                creation_at: {
-                    [Op.lte]: payout.created_at
-                },
-                status: {
-                    [Op.in]: ['delivered', 'completed']
-                }
-            },
-            order: [['creation_at', 'DESC']],
-            limit: 50
+            order: [[{ model: order, as: 'order' }, 'creation_at', 'DESC']],
+            limit: 100
         });
 
+        // Process order items
+        const processedItems = relatedOrderItems.map(item => {
+            const itemPrice = item.inventory?.price || 0;
+            const itemTotal = parseFloat(item.quantity) * parseFloat(itemPrice);
+
+            const productCommissionRate = item.link.product?.commission_rate || 0;
+            const tierCommissionRate = payout.kol.tier?.commission_rate || 0;
+
+            // Calculate commissions
+            const productCommission = (itemTotal * productCommissionRate) / 100;
+            const tierCommission = (itemTotal * tierCommissionRate) / 100;
+
+            return {
+                order_id: item.order_id,
+                order_item_id: item.order_item_id,
+                product_id: item.link.product?.product_id,
+                product_name: item.link.product?.name,
+                quantity: item.quantity,
+                item_total: itemTotal,
+                commission: {
+                    product_rate: productCommissionRate,
+                    tier_rate: tierCommissionRate,
+                    product_amount: productCommission,
+                    tier_amount: tierCommission,
+                    total_amount: productCommission + tierCommission
+                }
+            };
+        });
+
+        // Aggregate by order
+        const orderMap = {};
+        processedItems.forEach(item => {
+            if (!orderMap[item.order_id]) {
+                orderMap[item.order_id] = {
+                    order_id: item.order_id,
+                    total: 0,
+                    items_count: 0,
+                    product_commission: 0,
+                    tier_commission: 0,
+                    total_commission: 0,
+                    products: []
+                };
+            }
+
+            orderMap[item.order_id].total += item.item_total;
+            orderMap[item.order_id].items_count += 1;
+            orderMap[item.order_id].product_commission += item.commission.product_amount;
+            orderMap[item.order_id].tier_commission += item.commission.tier_amount;
+            orderMap[item.order_id].total_commission += item.commission.total_amount;
+
+            if (item.product_id && !orderMap[item.order_id].products.some(p => p.id === item.product_id)) {
+                orderMap[item.order_id].products.push({
+                    id: item.product_id,
+                    name: item.product_name
+                });
+            }
+        });
+
+        // Calculate total commissions
+        const totalProductCommission = Object.values(orderMap).reduce((sum, order) => sum + order.product_commission, 0);
+        const totalTierCommission = Object.values(orderMap).reduce((sum, order) => sum + order.tier_commission, 0);
+        const totalCommission = Object.values(orderMap).reduce((sum, order) => sum + order.total_commission, 0);
+
+        // Create related orders list
+        const related_orders = Object.values(orderMap).map(order => ({
+            order_id: order.order_id,
+            total: order.total.toFixed(2),
+            status: relatedOrderItems.find(item => item.order_id === order.order_id)?.order?.status || 'unknown',
+            creation_at: relatedOrderItems.find(item => item.order_id === order.order_id)?.order?.creation_at,
+            items_count: order.items_count,
+            commission: {
+                product: order.product_commission.toFixed(2),
+                tier: order.tier_commission.toFixed(2),
+                total: order.total_commission.toFixed(2)
+            },
+            products: order.products.map(p => p.name).join(', ')
+        }));
+
+        // Format response
         res.status(200).json({
             success: true,
             payout: {
@@ -447,18 +630,17 @@ exports.getPayoutDetails = async (req, res) => {
                 tier_name: payout.kol.tier.tier_name,
                 commission_rate: payout.kol.tier.commission_rate,
                 total_amount: payout.total_amount,
+                commission: {
+                    product: totalProductCommission.toFixed(2),
+                    tier: totalTierCommission.toFixed(2),
+                    total: totalCommission.toFixed(2)
+                },
                 payment_status: payout.payment_status,
                 payout_date: payout.payout_date,
                 notes: payout.notes,
                 created_at: payout.created_at,
                 modified_at: payout.modified_at,
-                related_orders: relatedOrders.map(order => ({
-                    order_id: order.order_id,
-                    total: order.total,
-                    status: order.status,
-                    creation_at: order.creation_at,
-                    items_count: order.order_items.length
-                }))
+                related_orders: related_orders.sort((a, b) => new Date(b.creation_at) - new Date(a.creation_at))
             }
         });
 
@@ -791,7 +973,7 @@ exports.getInfluencerPayoutDetails = async (req, res) => {
                                 {
                                     model: product,
                                     as: 'product',
-                                    attributes: ['product_id', 'name']
+                                    attributes: ['product_id', 'name', 'commission_rate']
                                 }
                             ]
                         },
@@ -816,8 +998,11 @@ exports.getInfluencerPayoutDetails = async (req, res) => {
         });
 
         const ordersWithCommission = relatedOrders.map(order => {
+            let productCommission = 0;
+            let tierCommission = 0;
             let totalCommission = 0;
             let productName = '';
+            let productCount = 0;
 
             order.order_items.forEach(item => {
                 if (!item.link || !item.inventory) return;
@@ -828,13 +1013,19 @@ exports.getInfluencerPayoutDetails = async (req, res) => {
                 const tierCommissionRate = parseFloat(payout.kol.tier.commission_rate) / 100;
                 const productCommissionRate = parseFloat(item.link.product.commission_rate || 0) / 100;
 
-                const effectiveCommissionRate = productCommissionRate > 0 ? productCommissionRate : tierCommissionRate;
+                // Calculate both commission types
+                const itemProductCommission = itemTotal * productCommissionRate;
+                const itemTierCommission = itemTotal * tierCommissionRate;
 
-                totalCommission += itemTotal * effectiveCommissionRate;
+                // Add to totals
+                productCommission += itemProductCommission;
+                tierCommission += itemTierCommission;
+                totalCommission += itemProductCommission + itemTierCommission;
 
-                if (!productName && item.link.product) {
+                if (productCount === 0 && item.link.product) {
                     productName = item.link.product.name;
                 }
+                productCount++;
             });
 
             return {
@@ -843,10 +1034,25 @@ exports.getInfluencerPayoutDetails = async (req, res) => {
                 status: order.status,
                 creation_at: order.creation_at,
                 items_count: order.order_items.length,
-                product_name: productName || 'Multiple Items',
-                commission: totalCommission.toFixed(2)
+                product_name: productCount > 1 ? 'Multiple Items' : productName || 'Unknown Product',
+                commission: {
+                    product: productCommission.toFixed(2),
+                    tier: tierCommission.toFixed(2),
+                    total: totalCommission.toFixed(2)
+                }
             };
         });
+
+        // Calculate total commission across all orders
+        const totalProductCommission = ordersWithCommission.reduce(
+            (sum, order) => sum + parseFloat(order.commission.product), 0
+        );
+        const totalTierCommission = ordersWithCommission.reduce(
+            (sum, order) => sum + parseFloat(order.commission.tier), 0
+        );
+        const totalCommission = ordersWithCommission.reduce(
+            (sum, order) => sum + parseFloat(order.commission.total), 0
+        );
 
         res.status(200).json({
             success: true,
@@ -860,6 +1066,11 @@ exports.getInfluencerPayoutDetails = async (req, res) => {
                 tier_name: payout.kol.tier.tier_name,
                 commission_rate: payout.kol.tier.commission_rate,
                 total_amount: payout.total_amount,
+                commission: {
+                    product: totalProductCommission.toFixed(2),
+                    tier: totalTierCommission.toFixed(2),
+                    total: totalCommission.toFixed(2)
+                },
                 payment_status: payout.payment_status,
                 payout_date: payout.payout_date,
                 notes: payout.notes,
@@ -1011,6 +1222,208 @@ exports.getInfluencerSalesStats = async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Failed to fetch sales statistics',
+            error: error.message
+        });
+    }
+};
+
+exports.getEligiblePayouts = async (req, res) => {
+    try {
+        const { start_date, end_date } = req.query;
+
+        if (!start_date || !end_date) {
+            return res.status(400).json({
+                success: false,
+                message: 'Start date and end date are required'
+            });
+        }
+
+        // Get all orders in the date range that are completed or delivered
+        const orderWhereConditions = {
+            creation_at: {
+                [Op.between]: [start_date, end_date]
+            },
+            status: {
+                [Op.in]: ['delivered', 'completed']
+            }
+        };
+
+        // Find already paid orders in this date range
+        const existingPayouts = await kol_payout.findAll({
+            where: {
+                payment_status: {
+                    [Op.in]: ['completed', 'pending']
+                },
+                created_at: {
+                    [Op.gte]: start_date
+                }
+            },
+            attributes: ['kol_id', 'total_amount', 'payment_status']
+        });
+
+        // Get all paid influencer IDs
+        const paidInfluencerIds = existingPayouts.map(payout => payout.kol_id);
+
+        // Find all eligible order items with their related data
+        const orderItems = await order_item.findAll({
+            include: [
+                {
+                    model: order,
+                    as: 'order',
+                    where: orderWhereConditions,
+                    attributes: ['order_id', 'total', 'status', 'creation_at']
+                },
+                {
+                    model: influencer_affiliate_link,
+                    as: 'link',
+                    required: true,
+                    include: [
+                        {
+                            model: influencer,
+                            as: 'influencer',
+                            include: [
+                                {
+                                    model: users,
+                                    as: 'user',
+                                    attributes: ['user_id', 'username', 'email', 'first_name', 'last_name']
+                                },
+                                {
+                                    model: influencer_tier,
+                                    as: 'tier',
+                                    attributes: ['tier_id', 'tier_name', 'commission_rate']
+                                }
+                            ]
+                        },
+                        {
+                            model: product,
+                            as: 'product',
+                            attributes: ['product_id', 'name', 'commission_rate']
+                        }
+                    ]
+                },
+                {
+                    model: product_inventory,
+                    as: 'inventory',
+                    attributes: ['inventory_id', 'price', 'quantity']
+                }
+            ]
+        });
+
+        // Process order items
+        const processedItems = orderItems.map(item => {
+            const itemPrice = item.inventory?.price || 0;
+            const itemTotal = parseFloat(item.quantity) * parseFloat(itemPrice);
+
+            const kol = item.link?.influencer;
+            const kolUser = kol?.user;
+            const kolName = kolUser ?
+                `${kolUser.first_name || ''} ${kolUser.last_name || ''}`.trim() :
+                kolUser?.username || 'Unknown';
+
+            const prod = item.link?.product;
+
+            // Get commission rates (using percentage values as stored in database)
+            const productCommissionRate = prod?.commission_rate || 0;
+            const tierCommissionRate = kol?.tier?.commission_rate || 0;
+
+            // Calculate commissions
+            const productCommission = (itemTotal * productCommissionRate) / 100;
+            const tierCommission = (itemTotal * tierCommissionRate) / 100;
+
+            return {
+                order_id: item.order_id,
+                order_item_id: item.order_item_id,
+                influencer_id: kol?.influencer_id,
+                influencer: kol,
+                user: kolUser,
+                product: prod,
+                itemTotal,
+                quantity: item.quantity,
+                commission: {
+                    product_rate: productCommissionRate,
+                    tier_rate: tierCommissionRate,
+                    product_amount: productCommission,
+                    tier_amount: tierCommission
+                }
+            };
+        });
+
+        // Aggregate commission data by influencer
+        const influencerCommissions = {};
+        const processedOrders = new Set();
+
+        for (const item of processedItems) {
+            const influencerId = item.influencer_id;
+            if (!influencerId) continue;
+
+            const orderId = item.order_id;
+
+            // Skip if this order item has already been processed
+            const orderItemKey = `${orderId}_${item.order_item_id}`;
+            if (processedOrders.has(orderItemKey)) continue;
+
+            // Skip if this influencer has already been paid
+            if (paidInfluencerIds.includes(influencerId)) continue;
+
+            if (!influencerCommissions[influencerId]) {
+                influencerCommissions[influencerId] = {
+                    influencer: item.influencer,
+                    user: item.user,
+                    productCommission: 0,
+                    tierCommission: 0,
+                    totalCommission: 0,
+                    orders: new Set(),
+                    orderItems: new Set()
+                };
+            }
+
+            influencerCommissions[influencerId].productCommission += item.commission.product_amount;
+            influencerCommissions[influencerId].tierCommission += item.commission.tier_amount;
+            influencerCommissions[influencerId].totalCommission += item.commission.product_amount + item.commission.tier_amount;
+            influencerCommissions[influencerId].orders.add(orderId);
+            influencerCommissions[influencerId].orderItems.add(item.order_item_id);
+            processedOrders.add(orderItemKey);
+        }
+
+        // Format response data
+        const eligibleInfluencers = [];
+        let totalEligibleAmount = 0;
+
+        for (const [influencerId, data] of Object.entries(influencerCommissions)) {
+            if (data.totalCommission <= 0) continue;
+
+            const influencerData = {
+                influencer_id: influencerId,
+                name: `${data.user?.first_name || ''} ${data.user?.last_name || ''}`.trim(),
+                username: data.user?.username,
+                email: data.user?.email,
+                tier_name: data.influencer?.tier?.tier_name,
+                commission: {
+                    product: data.productCommission.toFixed(2),
+                    tier: data.tierCommission.toFixed(2),
+                    total: data.totalCommission.toFixed(2)
+                },
+                total_amount: data.totalCommission.toFixed(2),
+                order_count: data.orders.size,
+                item_count: data.orderItems.size
+            };
+
+            eligibleInfluencers.push(influencerData);
+            totalEligibleAmount += data.totalCommission;
+        }
+
+        res.status(200).json({
+            success: true,
+            eligible_influencers: eligibleInfluencers,
+            total_eligible_amount: totalEligibleAmount.toFixed(2),
+            total_eligible_count: eligibleInfluencers.length
+        });
+
+    } catch (error) {
+        logger.error(`Error getting eligible KOL payouts: ${error.message}`, { stack: error.stack });
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch eligible KOL payouts',
             error: error.message
         });
     }

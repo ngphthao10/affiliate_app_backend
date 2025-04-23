@@ -7,7 +7,7 @@ const {
     influencer,
     influencer_affiliate_link,
     users,
-    Sequelize
+    influencer_tier, Sequelize
 } = require('../models/mysql');
 const KolStats = require('../models/mongodb/kolStats');
 const logger = require('../utils/logger');
@@ -205,17 +205,25 @@ exports.getKOLPerformance = async (req, res) => {
         const startDate = start_date ? dayjs(start_date).startOf('day') : dayjs().subtract(30, 'day').startOf('day');
         const endDate = end_date ? dayjs(end_date).endOf('day') : dayjs().endOf('day');
 
+        // Get basic KOL information
         const kolPerformance = await influencer.findAll({
             attributes: [
                 'influencer_id',
                 [Sequelize.col('user.username'), 'name'],
                 [Sequelize.col('user.first_name'), 'first_name'],
-                [Sequelize.col('user.last_name'), 'last_name']
+                [Sequelize.col('user.last_name'), 'last_name'],
+                [Sequelize.col('tier.commission_rate'), 'tier_commission_rate']
             ],
             include: [
                 {
                     model: users,
                     as: 'user',
+                    attributes: [],
+                    required: true
+                },
+                {
+                    model: influencer_tier,
+                    as: 'tier',
                     attributes: [],
                     required: true
                 }
@@ -229,6 +237,7 @@ exports.getKOLPerformance = async (req, res) => {
                     ? `${kol.first_name} ${kol.last_name}`
                     : kol.name;
 
+                // Get click data from MongoDB
                 const clicksData = await KolStats.aggregate([
                     {
                         $match: {
@@ -249,25 +258,27 @@ exports.getKOLPerformance = async (req, res) => {
 
                 const clicks = clicksData.length > 0 ? clicksData[0].total_clicks : 0;
 
-                const orderData = await order_item.findAll({
-                    attributes: [
-                        [Sequelize.fn('COUNT', Sequelize.fn('DISTINCT', Sequelize.col('order.order_id'))), 'orders_count'],
-                        [Sequelize.fn('SUM', Sequelize.fn('COALESCE', Sequelize.literal('order.total'), 0)), 'total_sales']
-                    ],
+                // Get order items with product commission rates
+                const orderItems = await order_item.findAll({
                     include: [
                         {
                             model: influencer_affiliate_link,
                             as: 'link',
-                            attributes: [],
                             required: true,
                             where: {
                                 influencer_id: kol.influencer_id
-                            }
+                            },
+                            include: [
+                                {
+                                    model: product,
+                                    as: 'product',
+                                    attributes: ['commission_rate']
+                                }
+                            ]
                         },
                         {
                             model: order,
                             as: 'order',
-                            attributes: [],
                             required: true,
                             where: {
                                 creation_at: {
@@ -277,51 +288,114 @@ exports.getKOLPerformance = async (req, res) => {
                                     [Op.notIn]: ['cancelled', 'returned']
                                 }
                             }
+                        },
+                        {
+                            model: product_inventory,
+                            as: 'inventory',
+                            attributes: ['price']
                         }
-                    ],
-                    raw: true
+                    ]
                 });
 
-                const orders = parseInt(orderData[0]?.orders_count || 0);
-                const sales = parseFloat(orderData[0]?.total_sales || 0);
-                const commissionRate = 5;
-                const commission = (sales * commissionRate) / 100;
+                // Calculate commission based on both product and tier rates
+                let totalSales = 0;
+                let productCommission = 0;
+                let tierCommission = 0;
+                const uniqueOrders = new Set();
+
+                orderItems.forEach(item => {
+                    const itemPrice = parseFloat(item.inventory?.price || 0);
+                    const itemTotal = parseFloat(item.quantity) * itemPrice;
+                    totalSales += itemTotal;
+
+                    // Track unique orders
+                    uniqueOrders.add(item.order_id);
+
+                    // Get commission rates (as percentages)
+                    const tierCommissionRate = parseFloat(kol.tier_commission_rate || 0) / 100;
+                    const productCommissionRate = parseFloat(item.link.product?.commission_rate || 0) / 100;
+
+                    // Calculate and add commissions
+                    productCommission += itemTotal * productCommissionRate;
+                    tierCommission += itemTotal * tierCommissionRate;
+                });
+
+                // Total commission is the sum of both commission types
+                const totalCommission = productCommission + tierCommission;
+                const orders = uniqueOrders.size;
 
                 return {
                     id: kol.influencer_id,
                     name: displayName,
                     clicks,
                     orders,
-                    commission,
+                    sales: totalSales,
+                    commission: {
+                        product: productCommission,
+                        tier: tierCommission,
+                        total: totalCommission
+                    },
                     conversion_rate: clicks > 0 ? (orders / clicks) * 100 : 0
                 };
             })
         );
 
-
+        // Sort by the specified field (using total commission if sort_by is 'commission')
         const sortedStats = [...detailedStats]
-            .sort((a, b) => b[sort_by] - a[sort_by])
+            .sort((a, b) => {
+                if (sort_by === 'commission') {
+                    return b.commission.total - a.commission.total;
+                }
+                return b[sort_by] - a[sort_by];
+            })
             .slice(0, 5);
 
-
+        // Calculate totals
         const totals = sortedStats.reduce(
             (acc, kol) => ({
                 clicks: acc.clicks + kol.clicks,
                 orders: acc.orders + kol.orders,
-                commission: acc.commission + kol.commission
+                sales: acc.sales + kol.sales,
+                commission: {
+                    product: acc.commission.product + kol.commission.product,
+                    tier: acc.commission.tier + kol.commission.tier,
+                    total: acc.commission.total + kol.commission.total
+                }
             }),
-            { clicks: 0, orders: 0, commission: 0 }
+            { clicks: 0, orders: 0, sales: 0, commission: { product: 0, tier: 0, total: 0 } }
         );
 
         const avgConversionRate = totals.clicks > 0 ? (totals.orders / totals.clicks) * 100 : 0;
 
+        // Format response data
+        const formattedStats = sortedStats.map(kol => ({
+            id: kol.id,
+            name: kol.name,
+            clicks: kol.clicks,
+            orders: kol.orders,
+            sales: parseFloat(kol.sales.toFixed(2)),
+            commission: {
+                product: parseFloat(kol.commission.product.toFixed(2)),
+                tier: parseFloat(kol.commission.tier.toFixed(2)),
+                total: parseFloat(kol.commission.total.toFixed(2))
+            },
+            conversion_rate: parseFloat(kol.conversion_rate.toFixed(2))
+        }));
+
         res.json({
             success: true,
             data: {
-                kols: sortedStats,
+                kols: formattedStats,
                 totals: {
-                    ...totals,
-                    conversion_rate: avgConversionRate
+                    clicks: totals.clicks,
+                    orders: totals.orders,
+                    sales: parseFloat(totals.sales.toFixed(2)),
+                    commission: {
+                        product: parseFloat(totals.commission.product.toFixed(2)),
+                        tier: parseFloat(totals.commission.tier.toFixed(2)),
+                        total: parseFloat(totals.commission.total.toFixed(2))
+                    },
+                    conversion_rate: parseFloat(avgConversionRate.toFixed(2))
                 }
             }
         });
