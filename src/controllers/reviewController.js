@@ -383,119 +383,120 @@ exports.deleteReview = async (req, res) => {
         });
     }
 };
+
 exports.getUserReviews = async (req, res) => {
     try {
-      const {
-        page = 1,
-        limit = 10,
-        product_id = '',
-        rating = 'all',
-        sort_by = 'creation_at',
-        sort_order = 'DESC',
-      } = req.query;
-  
-      const whereConditions = {};
-  
-      // Luôn lọc các review có status: 'approved'
-      whereConditions.status = 'approved';
-  
-      // Lọc theo rating nếu có
-      if (rating !== 'all') {
-        whereConditions.rate = rating;
-      }
-  
-      // Lọc theo product_id
-      if (product_id) {
-        const parsedProductId = parseInt(product_id);
-        if (isNaN(parsedProductId)) {
-          logger.warn(`product_id không hợp lệ: ${product_id}`);
-          return res.status(400).json({
-            success: false,
-            message: 'product_id không hợp lệ.',
-          });
+        const {
+            page = 1,
+            limit = 10,
+            product_id = '',
+            rating = 'all',
+            sort_by = 'creation_at',
+            sort_order = 'DESC',
+        } = req.query;
+
+        const whereConditions = {};
+
+        // Luôn lọc các review có status: 'approved'
+        whereConditions.status = 'approved';
+
+        // Lọc theo rating nếu có
+        if (rating !== 'all') {
+            whereConditions.rate = rating;
         }
-        whereConditions.product_id = parsedProductId;
-        logger.info(`Lọc review với product_id: ${parsedProductId}`);
-      } else {
-        logger.warn('Không có product_id được cung cấp trong query.');
-      }
-  
-      const offset = (page - 1) * limit;
-  
-      const validSortFields = ['creation_at', 'rate', 'status'];
-      const sortField = validSortFields.includes(sort_by) ? sort_by : 'creation_at';
-      const sortDirection = sort_order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
-  
-      // Đếm tổng số review
-      const totalCount = await review.count({
-        where: whereConditions,
-      });
-  
-      // Lấy danh sách review từ bảng review
-      const reviews = await review.findAll({
-        where: whereConditions,
-        order: [[sortField, sortDirection]],
-        limit: parseInt(limit),
-        offset: offset,
-        attributes: ['review_id', 'user_id', 'product_id', 'rate', 'status', 'creation_at', 'modified_at'],
-      });
-  
-      res.status(200).json({
-        success: true,
-        reviews,
-        pagination: {
-          total: totalCount,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          pages: Math.ceil(totalCount / limit),
-        },
-      });
+
+        // Lọc theo product_id
+        if (product_id) {
+            const parsedProductId = parseInt(product_id);
+            if (isNaN(parsedProductId)) {
+                logger.warn(`product_id không hợp lệ: ${product_id}`);
+                return res.status(400).json({
+                    success: false,
+                    message: 'product_id không hợp lệ.',
+                });
+            }
+            whereConditions.product_id = parsedProductId;
+            logger.info(`Lọc review với product_id: ${parsedProductId}`);
+        } else {
+            logger.warn('Không có product_id được cung cấp trong query.');
+        }
+
+        const offset = (page - 1) * limit;
+
+        const validSortFields = ['creation_at', 'rate', 'status'];
+        const sortField = validSortFields.includes(sort_by) ? sort_by : 'creation_at';
+        const sortDirection = sort_order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+        // Đếm tổng số review
+        const totalCount = await review.count({
+            where: whereConditions,
+        });
+
+        // Lấy danh sách review từ bảng review
+        const reviews = await review.findAll({
+            where: whereConditions,
+            order: [[sortField, sortDirection]],
+            limit: parseInt(limit),
+            offset: offset,
+            attributes: ['review_id', 'user_id', 'product_id', 'rate', 'status', 'creation_at', 'modified_at'],
+        });
+
+        res.status(200).json({
+            success: true,
+            reviews,
+            pagination: {
+                total: totalCount,
+                page: parseInt(page),
+                limit: parseInt(limit),
+                pages: Math.ceil(totalCount / limit),
+            },
+        });
     } catch (error) {
-      logger.error(`Lỗi khi lấy danh sách đánh giá: ${error.message}`, { stack: error.stack });
-      res.status(500).json({
-        success: false,
-        message: 'Không thể lấy danh sách đánh giá.',
-        error: error.message,
-      });
+        logger.error(`Lỗi khi lấy danh sách đánh giá: ${error.message}`, { stack: error.stack });
+        res.status(500).json({
+            success: false,
+            message: 'Không thể lấy danh sách đánh giá.',
+            error: error.message,
+        });
     }
-  };
+};
 exports.addReview = async (req, res) => {
     try {
-      const userId = req.user_id; // Lấy user_id từ token qua middleware
-      const { product_id, rate, status } = req.body;
-  
-      if (!product_id || !rate) {
-        return res.status(400).json({
-          success: false,
-          message: 'Product ID and rating are required',
+        const userId = req.user_id; // Lấy user_id từ token qua middleware
+        const { product_id, rate, status } = req.body;
+
+        if (!product_id || !rate) {
+            return res.status(400).json({
+                success: false,
+                message: 'Product ID and rating are required',
+            });
+        }
+
+        if (rate < 1 || rate > 5) {
+            return res.status(400).json({
+                success: false,
+                message: 'Rating must be between 1 and 5',
+            });
+        }
+
+        const newReview = await review.create({
+            user_id: userId,
+            product_id,
+            rate,
+            status: status || 'pending',
         });
-      }
-  
-      if (rate < 1 || rate > 5) {
-        return res.status(400).json({
-          success: false,
-          message: 'Rating must be between 1 and 5',
+
+        return res.status(201).json({
+            success: true,
+            message: 'Review submitted successfully',
+            review: newReview,
         });
-      }
-  
-      const newReview = await review.create({
-        user_id: userId,
-        product_id,
-        rate,
-        status: status || 'pending',
-      });
-  
-      return res.status(201).json({
-        success: true,
-        message: 'Review submitted successfully',
-        review: newReview,
-      });
     } catch (error) {
-      console.error('Error adding review:', error);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to submit review',
-        error: error.message,
-      });
+        console.error('Error adding review:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to submit review',
+            error: error.message,
+        });
     }
-  };
+};
