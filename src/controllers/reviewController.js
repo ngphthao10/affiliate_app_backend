@@ -437,7 +437,7 @@ exports.getUserReviews = async (req, res) => {
         order: [[sortField, sortDirection]],
         limit: parseInt(limit),
         offset: offset,
-        attributes: ['review_id', 'user_id', 'product_id', 'rate', 'status', 'creation_at', 'modified_at'],
+        attributes: ['review_id', 'user_id', 'product_id', 'rate', 'content','status', 'creation_at', 'modified_at'],
       });
   
       res.status(200).json({
@@ -462,7 +462,7 @@ exports.getUserReviews = async (req, res) => {
 exports.addReview = async (req, res) => {
     try {
       const userId = req.user_id; // Lấy user_id từ token qua middleware
-      const { product_id, rate, status } = req.body;
+      const { product_id, rate, status,content } = req.body;
   
       if (!product_id || !rate) {
         return res.status(400).json({
@@ -482,6 +482,7 @@ exports.addReview = async (req, res) => {
         user_id: userId,
         product_id,
         rate,
+        content,
         status: status || 'pending',
       });
   

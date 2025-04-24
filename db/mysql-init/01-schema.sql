@@ -239,6 +239,7 @@ CREATE TABLE review (
   user_id INT NOT NULL,
   product_id INT NOT NULL,
   rate INT NOT NULL CHECK (rate BETWEEN 1 AND 5),
+  content varchar(50) NOT NULL DEFAULT '',
   status ENUM ('pending', 'approved', 'rejected'),
   creation_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   modified_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

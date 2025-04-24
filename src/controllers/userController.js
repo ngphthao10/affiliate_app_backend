@@ -510,4 +510,41 @@ const registerInfluencer = async (req, res) => {
       return res.status(500).json({ success: false, message: 'Lỗi hệ thống. Vui lòng thử lại sau.' });
     }
   };
-module.exports = { registerUser, loginUser, adminLogin, kolLogin,getUser,updateUser,changePassword,registerInfluencer,assignRole };
+  const checkUserRole = async (req, res) => {
+    try {
+      const { user_id, role_id } = req.query; // Get user_id and role_id from query parameters
+      console.log('Request parameters:', { user_id, role_id });
+      // Validate input
+      if (!user_id) {
+        return res.status(400).json({ success: false, message: 'User ID is required.' });
+      }
+      if (!role_id) {
+        return res.status(400).json({ success: false, message: 'Role ID is required.' });
+      }
+      const userIdNumber = parseInt(user_id);
+      const roleIdNumber = parseInt(role_id);
+      console.log('Parsed values:', { userIdNumber, roleIdNumber });
+      if (isNaN(userIdNumber)) {
+        return res.status(400).json({ success: false, message: 'User ID must be a valid number.' });
+      }
+      if (isNaN(roleIdNumber)) {
+        return res.status(400).json({ success: false, message: 'Role ID must be a valid number.' });
+      }
+      // Check if the user has the specified role in the user_role collection
+      const userRole = await user_role.findOne({ 
+        where: {
+            user_id: userIdNumber,
+            role_id: roleIdNumber,
+          },
+      });
+      console.log('Query result:', userRole ? userRole.toJSON() : null);
+      return res.status(200).json({
+        success: true,
+        hasRole: !!userRole, // true if role exists, false otherwise
+      });
+    } catch (error) {
+      console.error('Error checking user role:', error);
+      return res.status(500).json({ success: false, message: 'Server error.' });
+    }
+  };
+module.exports = { registerUser, loginUser, adminLogin, kolLogin,getUser,updateUser,changePassword,registerInfluencer,assignRole,checkUserRole };
