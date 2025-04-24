@@ -188,6 +188,7 @@ exports.getCart = async (req, res) => {
         inventory_id: item.inventory_id,
         product: {
           id: item.inventory.product.product_id,
+          quantity:item.inventory.quantity,
           name: item.inventory.product.name,
           images,
           out_of_stock: item.inventory.product.out_of_stock,
