@@ -437,16 +437,16 @@ exports.filterProducts = async (req, res) => {
             subCategories.forEach((subCat) => {
                 switch (subCat) {
                     case 'Topwear':
-                        subCategoryIds.push(5, 9, 13); // Topwear của Men, Women, Kids
+                        subCategoryIds.push(4, 5, 3); // Topwear của Men, Women, Kids
                         break;
                     case 'Bottomwear':
-                        subCategoryIds.push(6, 10, 14); // Bottomwear của Men, Women, Kids
+                        subCategoryIds.push(8, 10, 12); // Bottomwear của Men, Women, Kids
                         break;
                     case 'Winterwear':
-                        subCategoryIds.push(7, 11, 15); // Winterwear của Men, Women, Kids
+                        subCategoryIds.push(); // Winterwear của Men, Women, Kids
                         break;
                     case 'Dress':
-                        subCategoryIds.push(8, 12, 16); // Dress của Men, Women, Kids
+                        subCategoryIds.push(); // Dress của Men, Women, Kids
                         break;
                 }
             });

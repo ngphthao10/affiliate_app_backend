@@ -273,7 +273,7 @@ const getOrdersByDate = async (req, res) => {
                 {
                     model: users,
                     as: 'user',
-                    attributes: ['username', 'email', 'phone_num']
+                    attributes: ['username', 'email', 'phone_num', 'first_name', 'last_name']
                 },
                 {
                     model: user_address,
@@ -307,7 +307,7 @@ const getOrdersByDate = async (req, res) => {
         const formattedOrders = filteredOrders.map(order => ({
             id: order.order_id,
             customer: {
-                name: order.user.username,
+                name: order.user.first_name + ' ' + order.user.last_name,
                 email: order.user.email,
                 phone: order.user.phone_num
             },
