@@ -4,9 +4,11 @@ module.exports = function (sequelize, DataTypes) {
     review_id: { autoIncrement: true, type: DataTypes.INTEGER, allowNull: false, primaryKey: true },
     user_id: { type: DataTypes.INTEGER, allowNull: false, references: { model: 'users', key: 'user_id' } },
     product_id: { type: DataTypes.INTEGER, allowNull: false, references: { model: 'product', key: 'product_id' } },
+    content: { type: DataTypes.TEXT, allowNull: true },
     rate: { type: DataTypes.INTEGER, allowNull: false },
     content: { type: DataTypes.STRING(255), allowNull: true },
     status: { type: DataTypes.ENUM('pending', 'approved', 'rejected'), allowNull: true },
+    rejection_reason: { type: DataTypes.TEXT, allowNull: true },
     creation_at: { type: DataTypes.DATE, allowNull: true, defaultValue: Sequelize.Sequelize.literal('CURRENT_TIMESTAMP') },
     modified_at: { type: DataTypes.DATE, allowNull: true, defaultValue: Sequelize.Sequelize.literal('CURRENT_TIMESTAMP') }
   }, {

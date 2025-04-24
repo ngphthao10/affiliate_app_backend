@@ -209,9 +209,15 @@ const getOrderDetails = async (req, res) => {
 
 const getOrdersByDate = async (req, res) => {
     try {
-        const { date } = req.query;
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
+        const {
+            date,
+            page = 1,
+            limit = 10,
+            search = '',
+            status,
+            payment_status
+        } = req.query;
+
         const offset = (page - 1) * limit;
 
         logger.info(`Fetching orders for date: ${date}, page: ${page}, limit: ${limit}`);
@@ -223,56 +229,110 @@ const getOrdersByDate = async (req, res) => {
             });
         }
 
-        // First, get the total count for pagination
-        const totalOrders = await order.count({
-            where: Sequelize.literal(`DATE(order.creation_at) = DATE('${date}')`)
-        });
+        // Build the where conditions
+        const whereConditions = {};
 
-        // Then fetch the paginated results
-        const orders = await order.findAll({
-            where: Sequelize.literal(`DATE(order.creation_at) = DATE('${date}')`),
+        // Add date condition
+        whereConditions.creation_at = {
+            [Op.between]: [
+                new Date(`${date}T00:00:00`),
+                new Date(`${date}T23:59:59`)
+            ]
+        };
+
+        // Add search condition
+        if (search) {
+            whereConditions[Op.or] = [
+                { order_id: { [Op.like]: `%${search}%` } },
+                { '$user.username$': { [Op.like]: `%${search}%` } },
+                { '$user.email$': { [Op.like]: `%${search}%` } }
+            ];
+        }
+
+        // Add status filter if provided
+        if (status && status !== 'All Statuses') {
+            whereConditions.status = status.toLowerCase();
+        }
+
+        // Count query with all filters
+        const totalOrdersCount = await order.count({
+            where: whereConditions,
             include: [
                 {
                     model: users,
                     as: 'user',
                     attributes: ['username', 'email']
+                }
+            ]
+        });
+
+        // Main query to fetch orders
+        const orders = await order.findAll({
+            where: whereConditions,
+            include: [
+                {
+                    model: users,
+                    as: 'user',
+                    attributes: ['username', 'email', 'phone_num']
+                },
+                {
+                    model: user_address,
+                    as: 'shipping_address',
+                    attributes: ['recipient_name', 'address', 'city', 'country']
                 },
                 {
                     model: payment,
                     as: 'payments',
-                    attributes: ['status', 'payment_method'],
+                    attributes: ['payment_method', 'status', 'amount'],
                     order: [['creation_at', 'DESC']],
                     limit: 1
                 }
             ],
-            order: [[Sequelize.col('order.creation_at'), 'DESC']],
-            limit: limit,
+            order: [['creation_at', 'DESC']],
+            limit: parseInt(limit, 10),
             offset: offset
         });
 
-        logger.info(`Found ${orders.length} orders for date ${date}`);
+        // Filter by payment status in memory if needed
+        let filteredOrders = orders;
+        if (payment_status && payment_status !== 'All Payment Statuses') {
+            filteredOrders = orders.filter(order => {
+                const latestPayment = order.payments && order.payments.length > 0 ? order.payments[0] : null;
+                return latestPayment && latestPayment.status.toLowerCase() === payment_status.toLowerCase();
+            });
+        }
 
-        const formattedOrders = orders.map(order => ({
+        logger.info(`Found ${filteredOrders.length} orders for date ${date} matching filters`);
+
+        const formattedOrders = filteredOrders.map(order => ({
             id: order.order_id,
             customer: {
                 name: order.user.username,
-                email: order.user.email
+                email: order.user.email,
+                phone: order.user.phone_num
             },
+            shipping: order.shipping_address ? {
+                recipient: order.shipping_address.recipient_name,
+                address: order.shipping_address.address,
+                city: order.shipping_address.city,
+                country: order.shipping_address.country
+            } : null,
             total: parseFloat(order.total),
             status: order.status,
-            payment_status: order.payments[0]?.status || 'pending',
-            payment_method: order.payments[0]?.payment_method || '',
-            created_at: order.creation_at
+            payment_status: order.payments && order.payments.length > 0 ? order.payments[0].status : 'pending',
+            payment_method: order.payments && order.payments.length > 0 ? order.payments[0].payment_method : '',
+            created_at: order.creation_at,
+            updated_at: order.modified_at
         }));
 
         res.status(200).json({
             success: true,
             orders: formattedOrders,
             pagination: {
-                total: totalOrders,
-                page: page,
-                limit: limit,
-                pages: Math.ceil(totalOrders / limit)
+                total: totalOrdersCount,
+                page: parseInt(page, 10),
+                limit: parseInt(limit, 10),
+                pages: Math.ceil(totalOrdersCount / limit)
             }
         });
     } catch (error) {
@@ -284,6 +344,7 @@ const getOrdersByDate = async (req, res) => {
         });
     }
 };
+
 const updateOrderStatus = async (req, res) => {
     const transaction = await sequelize.transaction();
     try {
