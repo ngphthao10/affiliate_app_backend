@@ -1,5 +1,5 @@
 const express = require('express');
-const { placeOrder, placeOrderStripe, placeOrderMomo, allOrders, userOrders, updateStatus, verifyStripe, verifyMomo, getOrderItems, testReadCookies } = require('../controllers/order1Controller.js');
+const { placeOrder, placeOrderStripe, placeOrderMomo, allOrders, userOrders, updateStatus, verifyStripe, verifyMomo, getOrderItems, testReadCookies,cancelOrder } = require('../controllers/order1Controller.js');
 const adminAuth = require('../middlewares/adminAuth.js');
 const authUser = require('../middlewares/customerAuth.js');
 
@@ -22,4 +22,5 @@ orderRouter.post('/verifyStripe', authUser, verifyStripe);
 orderRouter.post('/verifyMomo', authUser, verifyMomo);
 // Trong file routes của bạn
 orderRouter.post('/place', testReadCookies, authUser, placeOrder);
+orderRouter.post('/cancel-order',authUser,cancelOrder);
 module.exports = orderRouter; 

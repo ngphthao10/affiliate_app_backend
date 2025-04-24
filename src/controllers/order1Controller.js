@@ -1290,7 +1290,105 @@ const testReadCookies = (req, res, next) => {
 // Sử dụng middleware này với route cần test
 // Ví dụ:
 // app.post('/api/orders/place', testReadCookies, authUser, placeOrder);
+const cancelOrder = async (req, res) => {
+  const transaction = await sequelize.transaction(); // Start a transaction
 
+  try {
+    const { orderId } = req.body;
+    const userId = req.user_id; // From middleware customerAuth
+
+    // Validate inputs
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required field: orderId is required',
+      });
+    }
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required field: userId is required',
+      });
+    }
+
+    // Find the order
+    const orderData = await order.findOne({
+      where: { order_id: orderId, user_id: userId },
+      transaction,
+    });
+
+    if (!orderData) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found or you do not have permission to cancel this order',
+      });
+    }
+
+    // Check if the order is in a cancellable state
+    if (orderData.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: 'Only pending orders can be canceled',
+      });
+    }
+
+    // Find the items in the order
+    const orderItems = await order_item.findAll({
+      where: { order_id: orderId },
+      transaction,
+    });
+
+    if (!orderItems || orderItems.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No items found for this order',
+      });
+    }
+
+    // Update inventory quantities (restore stock)
+    for (const item of orderItems) {
+      const inventory = await product_inventory.findOne({
+        where: { inventory_id: item.inventory_id },
+        transaction,
+      });
+
+      if (!inventory) {
+        await transaction.rollback();
+        return res.status(404).json({
+          success: false,
+          message: `Inventory not found for inventory_id ${item.inventory_id}`,
+        });
+      }
+
+      // Add the quantity back to the inventory
+      await inventory.update(
+        { quantity: inventory.quantity + item.quantity },
+        { transaction }
+      );
+    }
+
+    // Update the order status to "cancelled"
+    await orderData.update({ status: 'cancelled' }, { transaction });
+
+    // Commit the transaction
+    await transaction.commit();
+
+    res.status(200).json({
+      success: true,
+      message: 'Order canceled successfully, and inventory updated',
+    });
+  } catch (error) {
+    // Rollback the transaction on error
+    await transaction.rollback();
+
+    console.error('Error canceling order:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to cancel order',
+      error: error.message,
+    });
+  }
+};
 // Định nghĩa route
 module.exports = {
   placeOrder,
@@ -1301,5 +1399,6 @@ module.exports = {
   allOrders,
   userOrders,
   updateStatus, getOrderItems
-  , testReadCookies
+  , testReadCookies,
+  cancelOrder
 };
