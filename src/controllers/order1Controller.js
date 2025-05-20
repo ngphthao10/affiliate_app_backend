@@ -1,6 +1,6 @@
 const { order, users, payment, sequelize, Sequelize, user_address, order_item, cart_session, cart_item, product_inventory, product } = require('../models/mysql');
 const logger = require('../utils/logger');
-const Stripe = require('stripe');
+const Stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const axios = require('axios');
 const crypto = require('crypto');
 const Op = Sequelize.Op;
@@ -1189,7 +1189,7 @@ const getOrderItems = async (req, res) => {
             {
               model: product,
               as: 'product',
-              attributes: ['product_id','name', 'small_image'], // Sử dụng small_image thay vì image
+              attributes: ['product_id', 'name', 'small_image'], // Sử dụng small_image thay vì image
             },
           ],
         },
