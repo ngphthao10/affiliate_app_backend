@@ -4,13 +4,19 @@ const { sequelize, testConnection } = require('./src/models/mysql');
 const { connectMongoDB } = require('./src/models/mongodb');
 const logger = require('./src/utils/logger');
 const env = require('./src/config/env');
+const { runMySQLMigration } = require('./src/scripts/runMigration');
 
 const PORT = env.port;
-const creationTime = new Date();
-console.log('Creation time before saving:', creationTime.toString());
+
 // Start the server
 const startServer = async () => {
     try {
+        // Run migration in production environment
+        if (process.env.NODE_ENV === 'production') {
+            logger.info('Running MySQL migration in production...');
+            await runMySQLMigration();
+        }
+
         // Connect to MySQL
         await testConnection();
 
