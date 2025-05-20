@@ -1,0 +1,12 @@
+{
+    "build": {
+        "builder": "NIXPACKS",
+        "buildCommand": "npm install"
+    },
+    "deploy": {
+        "startCommand": "npm start",
+        "healthcheckPath": "/api",
+        "healthcheckTimeout": 120,
+        "restartPolicyType": "ON_FAILURE"
+    }
+}
