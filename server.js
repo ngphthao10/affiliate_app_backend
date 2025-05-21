@@ -4,7 +4,7 @@ const { sequelize, testConnection } = require('./src/models/mysql');
 const { connectMongoDB } = require('./src/models/mongodb');
 const logger = require('./src/utils/logger');
 const env = require('./src/config/env');
-const { runMySQLMigration } = require('./src/scripts/runMigration');
+const { runMySQLMigration } = require('./src/scripts/migrate');
 
 const PORT = env.port;
 

@@ -1,5 +1,5 @@
-CREATE DATABASE IF NOT EXISTS ecommerce_db;
-USE ecommerce_db;
+-- CREATE DATABASE IF NOT EXISTS ecommerce_db;
+-- USE ecommerce_db;
 
 -- Users table
 CREATE TABLE users (
@@ -46,41 +46,6 @@ CREATE TABLE user_address (
   modified_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
-
-DELIMITER $$
-
--- Trigger cho INSERT
-CREATE TRIGGER ensure_single_default_address_insert
-BEFORE INSERT ON user_address
-FOR EACH ROW
-BEGIN
-    IF NEW.is_default = 1 THEN
-        -- Kiểm tra xem đã có địa chỉ default chưa
-        IF EXISTS (SELECT 1 FROM user_address WHERE user_id = NEW.user_id AND is_default = 1) THEN
-            SIGNAL SQLSTATE '45000' 
-            SET MESSAGE_TEXT = 'Default Address Already Exists';
-        END IF;
-    END IF;
-END$$
-
--- Trigger cho UPDATE
-CREATE TRIGGER ensure_single_default_address_update
-BEFORE UPDATE ON user_address
-FOR EACH ROW
-BEGIN
-    IF NEW.is_default = 1 AND OLD.is_default = 0 THEN
-        -- Kiểm tra xem đã có địa chỉ default chưa
-        IF EXISTS (SELECT 1 FROM user_address WHERE user_id = NEW.user_id AND is_default = 1 AND address_id != NEW.address_id) THEN
-            SIGNAL SQLSTATE '45000' 
-            SET MESSAGE_TEXT = 'Default Address Already Exists';
-        END IF;
-    END IF;
-END$$
-
-DELIMITER ;
-
-DROP TRIGGER IF EXISTS ensure_single_default_address_insert;
-DROP TRIGGER IF EXISTS ensure_single_default_address_update;
 
 -- Category table
 CREATE TABLE category (
@@ -247,169 +212,169 @@ CREATE TABLE review (
   FOREIGN KEY (product_id) REFERENCES product(product_id)
 );
 
--- Trigger to update product reviews_count when a review is added/deleted
-DELIMITER $$
-CREATE TRIGGER update_reviews_count_insert
-AFTER INSERT ON review
-FOR EACH ROW
-BEGIN
-  IF NEW.status = 'approved' THEN
-    UPDATE product
-    SET reviews_count = reviews_count + 1
-    WHERE product_id = NEW.product_id;
-  END IF;
-END$$
-DELIMITER ;
+-- -- Trigger to update product reviews_count when a review is added/deleted
+-- DELIMITER $$
+-- CREATE TRIGGER update_reviews_count_insert
+-- AFTER INSERT ON review
+-- FOR EACH ROW
+-- BEGIN
+--   IF NEW.status = 'approved' THEN
+--     UPDATE product
+--     SET reviews_count = reviews_count + 1
+--     WHERE product_id = NEW.product_id;
+--   END IF;
+-- END$$
+-- DELIMITER ;
 
-DELIMITER $$
-CREATE TRIGGER update_reviews_count_update
-AFTER UPDATE ON review
-FOR EACH ROW
-BEGIN
-  IF NEW.status = 'approved' AND OLD.status != 'approved' THEN
-    UPDATE product
-    SET reviews_count = reviews_count + 1
-    WHERE product_id = NEW.product_id;
-  ELSEIF NEW.status != 'approved' AND OLD.status = 'approved' THEN
-    UPDATE product
-    SET reviews_count = reviews_count - 1
-    WHERE product_id = NEW.product_id;
-  END IF;
-END$$
-DELIMITER ;
+-- DELIMITER $$
+-- CREATE TRIGGER update_reviews_count_update
+-- AFTER UPDATE ON review
+-- FOR EACH ROW
+-- BEGIN
+--   IF NEW.status = 'approved' AND OLD.status != 'approved' THEN
+--     UPDATE product
+--     SET reviews_count = reviews_count + 1
+--     WHERE product_id = NEW.product_id;
+--   ELSEIF NEW.status != 'approved' AND OLD.status = 'approved' THEN
+--     UPDATE product
+--     SET reviews_count = reviews_count - 1
+--     WHERE product_id = NEW.product_id;
+--   END IF;
+-- END$$
+-- DELIMITER ;
 
-DELIMITER $$
-CREATE TRIGGER update_reviews_count_delete
-AFTER DELETE ON review
-FOR EACH ROW
-BEGIN
-  IF OLD.status = 'approved' THEN
-    UPDATE product
-    SET reviews_count = reviews_count - 1
-    WHERE product_id = OLD.product_id;
-  END IF;
-END$$
-DELIMITER ;
+-- DELIMITER $$
+-- CREATE TRIGGER update_reviews_count_delete
+-- AFTER DELETE ON review
+-- FOR EACH ROW
+-- BEGIN
+--   IF OLD.status = 'approved' THEN
+--     UPDATE product
+--     SET reviews_count = reviews_count - 1
+--     WHERE product_id = OLD.product_id;
+--   END IF;
+-- END$$
+-- DELIMITER ;
 
--- KOL payout table
-CREATE TABLE kol_payout (
-  payout_id INT AUTO_INCREMENT PRIMARY KEY,
-  kol_id INT NOT NULL,
-  total_amount DECIMAL(10, 2) NOT NULL,
-  payment_status ENUM('pending', 'completed', 'failed'),
-  payout_date DATE,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  modified_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (kol_id) REFERENCES influencer(influencer_id)
-);
-DELIMITER //
-CREATE PROCEDURE `update_inventory_on_order`(IN orderId INT, IN new_status VARCHAR(50))
-BEGIN
-    DECLARE done INT DEFAULT FALSE;
-    DECLARE curr_inventory_id INT;
-    DECLARE curr_quantity INT;
-    DECLARE curr_available_quantity INT;
-    DECLARE error_message VARCHAR(255);
-    DECLARE cur CURSOR FOR 
-        SELECT inventory_id, quantity 
-        FROM order_item 
-        WHERE order_id = orderId;
-    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+-- -- KOL payout table
+-- CREATE TABLE kol_payout (
+--   payout_id INT AUTO_INCREMENT PRIMARY KEY,
+--   kol_id INT NOT NULL,
+--   total_amount DECIMAL(10, 2) NOT NULL,
+--   payment_status ENUM('pending', 'completed', 'failed'),
+--   payout_date DATE,
+--   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+--   modified_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+--   FOREIGN KEY (kol_id) REFERENCES influencer(influencer_id)
+-- );
+-- DELIMITER //
+-- CREATE PROCEDURE `update_inventory_on_order`(IN orderId INT, IN new_status VARCHAR(50))
+-- BEGIN
+--     DECLARE done INT DEFAULT FALSE;
+--     DECLARE curr_inventory_id INT;
+--     DECLARE curr_quantity INT;
+--     DECLARE curr_available_quantity INT;
+--     DECLARE error_message VARCHAR(255);
+--     DECLARE cur CURSOR FOR 
+--         SELECT inventory_id, quantity 
+--         FROM order_item 
+--         WHERE order_id = orderId;
+--     DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
 
-    -- Kiểm tra trạng thái hợp lệ
-    IF new_status NOT IN ('pending', 'processing', 'shipped', 'delivered', 'cancelled', 'returned') THEN
-        SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = 'Invalid order status';
-    END IF;
+--     -- Kiểm tra trạng thái hợp lệ
+--     IF new_status NOT IN ('pending', 'processing', 'shipped', 'delivered', 'cancelled', 'returned') THEN
+--         SIGNAL SQLSTATE '45000'
+--         SET MESSAGE_TEXT = 'Invalid order status';
+--     END IF;
 
-    IF new_status IN ('cancelled', 'returned') THEN
-        OPEN cur;
-        read_loop: LOOP
-            FETCH cur INTO curr_inventory_id, curr_quantity;
-            IF done THEN
-                LEAVE read_loop;
-            END IF;
-            -- Tăng số lượng tồn kho
-            UPDATE product_inventory
-            SET quantity = quantity + curr_quantity
-            WHERE inventory_id = curr_inventory_id;
-        END LOOP;
-        CLOSE cur;
-    ELSE
-        OPEN cur;
-        read_loop: LOOP
-            FETCH cur INTO curr_inventory_id, curr_quantity;
-            IF done THEN
-                LEAVE read_loop;
-            END IF;
-            -- Kiểm tra số lượng tồn kho trước khi cập nhật
-            SELECT quantity INTO curr_available_quantity
-            FROM product_inventory
-            WHERE inventory_id = curr_inventory_id;
+--     IF new_status IN ('cancelled', 'returned') THEN
+--         OPEN cur;
+--         read_loop: LOOP
+--             FETCH cur INTO curr_inventory_id, curr_quantity;
+--             IF done THEN
+--                 LEAVE read_loop;
+--             END IF;
+--             -- Tăng số lượng tồn kho
+--             UPDATE product_inventory
+--             SET quantity = quantity + curr_quantity
+--             WHERE inventory_id = curr_inventory_id;
+--         END LOOP;
+--         CLOSE cur;
+--     ELSE
+--         OPEN cur;
+--         read_loop: LOOP
+--             FETCH cur INTO curr_inventory_id, curr_quantity;
+--             IF done THEN
+--                 LEAVE read_loop;
+--             END IF;
+--             -- Kiểm tra số lượng tồn kho trước khi cập nhật
+--             SELECT quantity INTO curr_available_quantity
+--             FROM product_inventory
+--             WHERE inventory_id = curr_inventory_id;
             
-            IF curr_available_quantity < curr_quantity THEN
-                -- Tạo thông điệp lỗi thủ công
-                SET error_message = 'Insufficient inventory quantity for inventory_id: ';
-                SET error_message = CONCAT(error_message, CAST(curr_inventory_id AS CHAR));
-                SET error_message = CONCAT(error_message, '. Requested: ');
-                SET error_message = CONCAT(error_message, CAST(curr_quantity AS CHAR));
-                SET error_message = CONCAT(error_message, ', Available: ');
-                SET error_message = CONCAT(error_message, CAST(curr_available_quantity AS CHAR));
+--             IF curr_available_quantity < curr_quantity THEN
+--                 -- Tạo thông điệp lỗi thủ công
+--                 SET error_message = 'Insufficient inventory quantity for inventory_id: ';
+--                 SET error_message = CONCAT(error_message, CAST(curr_inventory_id AS CHAR));
+--                 SET error_message = CONCAT(error_message, '. Requested: ');
+--                 SET error_message = CONCAT(error_message, CAST(curr_quantity AS CHAR));
+--                 SET error_message = CONCAT(error_message, ', Available: ');
+--                 SET error_message = CONCAT(error_message, CAST(curr_available_quantity AS CHAR));
                 
-                SIGNAL SQLSTATE '45000'
-                SET MESSAGE_TEXT = error_message;
-            END IF;
+--                 SIGNAL SQLSTATE '45000'
+--                 SET MESSAGE_TEXT = error_message;
+--             END IF;
             
-            -- Trừ số lượng tồn kho
-            UPDATE product_inventory
-            SET quantity = quantity - curr_quantity
-            WHERE inventory_id = curr_inventory_id;
-        END LOOP;
-        CLOSE cur;
-    END IF;
+--             -- Trừ số lượng tồn kho
+--             UPDATE product_inventory
+--             SET quantity = quantity - curr_quantity
+--             WHERE inventory_id = curr_inventory_id;
+--         END LOOP;
+--         CLOSE cur;
+--     END IF;
 
-    -- Cập nhật out_of_stock
-    UPDATE product p
-    JOIN (
-        SELECT product_id, SUM(quantity) AS total_quantity
-        FROM product_inventory
-        GROUP BY product_id
-    ) pi ON p.product_id = pi.product_id
-    SET p.out_of_stock = (pi.total_quantity = 0);
-END//
-DELIMITER ;
--- Insert default roles
+--     -- Cập nhật out_of_stock
+--     UPDATE product p
+--     JOIN (
+--         SELECT product_id, SUM(quantity) AS total_quantity
+--         FROM product_inventory
+--         GROUP BY product_id
+--     ) pi ON p.product_id = pi.product_id
+--     SET p.out_of_stock = (pi.total_quantity = 0);
+-- END//
+-- DELIMITER ;
+-- -- Insert default roles
 INSERT INTO roles (role_name, description) VALUES 
 ('admin', 'Administrator with full access'),
 ('customer', 'Regular customer'),
 ('influencer', 'Influencer/KOL with affiliate marketing capabilities');
 
-DELIMITER $$
+-- DELIMITER $$
 
-CREATE TRIGGER update_payment_on_order_cancel_return
-AFTER UPDATE ON `order`
-FOR EACH ROW
-BEGIN
-    IF NEW.status IN ('cancelled', 'returned') AND OLD.status NOT IN ('cancelled', 'returned') THEN
-        UPDATE payment
-        SET status = 'failed', modified_at = CURRENT_TIMESTAMP
-        WHERE order_id = NEW.order_id;
-    END IF;
-END$$
+-- CREATE TRIGGER update_payment_on_order_cancel_return
+-- AFTER UPDATE ON `order`
+-- FOR EACH ROW
+-- BEGIN
+--     IF NEW.status IN ('cancelled', 'returned') AND OLD.status NOT IN ('cancelled', 'returned') THEN
+--         UPDATE payment
+--         SET status = 'failed', modified_at = CURRENT_TIMESTAMP
+--         WHERE order_id = NEW.order_id;
+--     END IF;
+-- END$$
 
-DELIMITER ;
+-- DELIMITER ;
 
-DELIMITER $$
+-- DELIMITER $$
 
-CREATE TRIGGER update_cod_payment_on_delivered
-AFTER UPDATE ON `order`
-FOR EACH ROW
-BEGIN
-    IF NEW.status = 'delivered' AND OLD.status != 'delivered' THEN
-        UPDATE payment
-        SET status = 'completed', modified_at = CURRENT_TIMESTAMP
-        WHERE order_id = NEW.order_id AND payment_method = 'cod';
-    END IF;
-END$$
+-- CREATE TRIGGER update_cod_payment_on_delivered
+-- AFTER UPDATE ON `order`
+-- FOR EACH ROW
+-- BEGIN
+--     IF NEW.status = 'delivered' AND OLD.status != 'delivered' THEN
+--         UPDATE payment
+--         SET status = 'completed', modified_at = CURRENT_TIMESTAMP
+--         WHERE order_id = NEW.order_id AND payment_method = 'cod';
+--     END IF;
+-- END$$
 
-DELIMITER ;
+-- DELIMITER ;

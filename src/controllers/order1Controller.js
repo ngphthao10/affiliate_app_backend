@@ -1,6 +1,6 @@
 const { order, users, payment, sequelize, Sequelize, user_address, order_item, cart_session, cart_item, product_inventory, product } = require('../models/mysql');
 const logger = require('../utils/logger');
-const Stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+// const Stripe = require('stripe');
 const axios = require('axios');
 const crypto = require('crypto');
 const Op = Sequelize.Op;
@@ -10,7 +10,7 @@ const currency = 'usd';
 const deliveryCharge = 1;
 
 // Gateway initialize
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+// const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // Hàm tạo chữ ký (signature) cho MoMo
 const createSignature = (rawData) => {
@@ -494,205 +494,205 @@ const placeOrder = async (req, res) => {
 };
 
 // Cập nhật hàm placeOrderStripe để thêm thông tin affiliate vào metadata
-const placeOrderStripe = async (req, res) => {
-  try {
-    const userId = req.user_id;
-    const { address, amount } = req.body;
+// const placeOrderStripe = async (req, res) => {
+//   try {
+//     const userId = req.user_id;
+//     const { address, amount } = req.body;
 
-    if (!userId || !address || amount === undefined) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required fields: userId, address, and amount are required',
-      });
-    }
+//     if (!userId || !address || amount === undefined) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Missing required fields: userId, address, and amount are required',
+//       });
+//     }
 
-    if (!address.recipient_name || !address.phone_num || !address.address) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required address fields: recipient_name, phone_num, and address are required',
-      });
-    }
+//     if (!address.recipient_name || !address.phone_num || !address.address) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Missing required address fields: recipient_name, phone_num, and address are required',
+//       });
+//     }
 
-    // Kiểm tra giỏ hàng có sản phẩm không
-    const items = await getCartItems(userId);
-    if (items.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Cart is empty',
-      });
-    }
+//     // Kiểm tra giỏ hàng có sản phẩm không
+//     const items = await getCartItems(userId);
+//     if (items.length === 0) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Cart is empty',
+//       });
+//     }
 
-    // Kiểm tra amount tối thiểu
-    const minimumAmountUSD = 0.5;
-    if (amount < minimumAmountUSD) {
-      return res.status(400).json({
-        success: false,
-        message: `Total amount must be at least ${minimumAmountUSD} USD. Current amount: ${amount} USD`,
-      });
-    }
+//     // Kiểm tra amount tối thiểu
+//     const minimumAmountUSD = 0.5;
+//     if (amount < minimumAmountUSD) {
+//       return res.status(400).json({
+//         success: false,
+//         message: `Total amount must be at least ${minimumAmountUSD} USD. Current amount: ${amount} USD`,
+//       });
+//     }
 
-    // Lấy thông tin affiliate từ cookies
-    const affiliateInfo = getAffiliateInfo(req);
+//     // Lấy thông tin affiliate từ cookies
+//     const affiliateInfo = getAffiliateInfo(req);
 
-    // Thêm thông tin vào metadata
-    const metadata = {
-      user_id: userId.toString()
-    };
+//     // Thêm thông tin vào metadata
+//     const metadata = {
+//       user_id: userId.toString()
+//     };
 
-    if (affiliateInfo) {
-      metadata.affiliate_info = JSON.stringify(affiliateInfo);
-    }
+//     if (affiliateInfo) {
+//       metadata.affiliate_info = JSON.stringify(affiliateInfo);
+//     }
 
-    // Tạo line_items với amount
-    const line_items = [
-      {
-        price_data: {
-          currency: currency,
-          product_data: {
-            name: 'Order Total (Products + Delivery)',
-          },
-          unit_amount: Math.round(amount * 100), // amount đã bao gồm phí giao hàng
-        },
-        quantity: 1,
-      },
-    ];
+//     // Tạo line_items với amount
+//     const line_items = [
+//       {
+//         price_data: {
+//           currency: currency,
+//           product_data: {
+//             name: 'Order Total (Products + Delivery)',
+//           },
+//           unit_amount: Math.round(amount * 100), // amount đã bao gồm phí giao hàng
+//         },
+//         quantity: 1,
+//       },
+//     ];
 
-    const session = await stripe.checkout.sessions.create({
-      success_url: `${process.env.STRIPE_RETURN_URL}?success=true&user_id=${userId}`,
-      cancel_url: `${process.env.STRIPE_RETURN_URL}?success=false&user_id=${userId}`,
-      line_items,
-      mode: 'payment',
-      metadata: metadata,
-    });
+//     const session = await stripe.checkout.sessions.create({
+//       success_url: `${process.env.STRIPE_RETURN_URL}?success=true&user_id=${userId}`,
+//       cancel_url: `${process.env.STRIPE_RETURN_URL}?success=false&user_id=${userId}`,
+//       line_items,
+//       mode: 'payment',
+//       metadata: metadata,
+//     });
 
-    res.status(200).json({
-      success: true,
-      session_url: session.url,
-      session_id: session.id,
-    });
-  } catch (error) {
-    logger.error(`Error placing Stripe order: ${error.message}`, { stack: error.stack });
-    res.status(500).json({
-      success: false,
-      message: 'Failed to initiate Stripe payment',
-      error: error.message,
-    });
-  }
-};
+//     res.status(200).json({
+//       success: true,
+//       session_url: session.url,
+//       session_id: session.id,
+//     });
+//   } catch (error) {
+//     logger.error(`Error placing Stripe order: ${error.message}`, { stack: error.stack });
+//     res.status(500).json({
+//       success: false,
+//       message: 'Failed to initiate Stripe payment',
+//       error: error.message,
+//     });
+//   }
+// };
 
 // Sửa verifyStripe để xử lý thông tin affiliate từ metadata
-const verifyStripe = async (req, res) => {
-  const transaction = await sequelize.transaction();
-  try {
-    const user_id = req.user_id;
-    const { sessionId, success, address, amount } = req.body;
+// const verifyStripe = async (req, res) => {
+//   const transaction = await sequelize.transaction();
+//   try {
+//     const user_id = req.user_id;
+//     const { sessionId, success, address, amount } = req.body;
 
-    if (!sessionId || !user_id || success === undefined || !address || amount === undefined) {
-      await transaction.rollback();
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required fields: sessionId, user_id, success, address, and amount are required',
-      });
-    }
+//     if (!sessionId || !user_id || success === undefined || !address || amount === undefined) {
+//       await transaction.rollback();
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Missing required fields: sessionId, user_id, success, address, and amount are required',
+//       });
+//     }
 
-    if (!address.recipient_name || !address.phone_num || !address.address) {
-      await transaction.rollback();
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required address fields: recipient_name, phone_num, and address are required',
-      });
-    }
+//     if (!address.recipient_name || !address.phone_num || !address.address) {
+//       await transaction.rollback();
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Missing required address fields: recipient_name, phone_num, and address are required',
+//       });
+//     }
 
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
-    if (session.metadata.user_id !== user_id.toString()) {
-      await transaction.rollback();
-      return res.status(403).json({
-        success: false,
-        message: 'Invalid session: user_id does not match',
-      });
-    }
+//     const session = await stripe.checkout.sessions.retrieve(sessionId);
+//     if (session.metadata.user_id !== user_id.toString()) {
+//       await transaction.rollback();
+//       return res.status(403).json({
+//         success: false,
+//         message: 'Invalid session: user_id does not match',
+//       });
+//     }
 
-    if (success === 'true' && session.payment_status === 'paid') {
-      const items = await getCartItems(user_id, transaction);
-      if (items.length === 0) {
-        await transaction.rollback();
-        return res.status(400).json({
-          success: false,
-          message: 'Cart is empty',
-        });
-      }
+//     if (success === 'true' && session.payment_status === 'paid') {
+//       const items = await getCartItems(user_id, transaction);
+//       if (items.length === 0) {
+//         await transaction.rollback();
+//         return res.status(400).json({
+//           success: false,
+//           message: 'Cart is empty',
+//         });
+//       }
 
-      if (Math.abs(amount - session.amount_total / 100) > 0.01) {
-        await transaction.rollback();
-        return res.status(400).json({
-          success: false,
-          message: `Provided amount ${amount} USD does not match Stripe session amount ${session.amount_total / 100} USD`,
-        });
-      }
+//       if (Math.abs(amount - session.amount_total / 100) > 0.01) {
+//         await transaction.rollback();
+//         return res.status(400).json({
+//           success: false,
+//           message: `Provided amount ${amount} USD does not match Stripe session amount ${session.amount_total / 100} USD`,
+//         });
+//       }
 
-      const shippingAddressId = await ensureUserAddress(user_id, address, transaction);
+//       const shippingAddressId = await ensureUserAddress(user_id, address, transaction);
 
-      const newOrder = await order.create(
-        {
-          user_id,
-          total: amount,
-          status: 'processing',
-          shipping_address_id: shippingAddressId,
-        },
-        { transaction }
-      );
+//       const newOrder = await order.create(
+//         {
+//           user_id,
+//           total: amount,
+//           status: 'processing',
+//           shipping_address_id: shippingAddressId,
+//         },
+//         { transaction }
+//       );
 
-      // Thêm affiliate info từ metadata vào request
-      if (session.metadata.affiliate_info) {
-        try {
-          // Tạo cookies tạm thời để sử dụng cùng function createOrderItems
-          req.cookies = req.cookies || {};
-          req.cookies.affiliate_info = encodeURIComponent(session.metadata.affiliate_info);
-        } catch (e) {
-          logger.error(`Error processing affiliate info from Stripe: ${e.message}`);
-        }
-      }
+//       // Thêm affiliate info từ metadata vào request
+//       if (session.metadata.affiliate_info) {
+//         try {
+//           // Tạo cookies tạm thời để sử dụng cùng function createOrderItems
+//           req.cookies = req.cookies || {};
+//           req.cookies.affiliate_info = encodeURIComponent(session.metadata.affiliate_info);
+//         } catch (e) {
+//           logger.error(`Error processing affiliate info from Stripe: ${e.message}`);
+//         }
+//       }
 
-      await createOrderItems(newOrder.order_id, items, 'processing', transaction, req, res);
-      await createPayment(newOrder.order_id, amount, 'stripe', transaction);
-      await clearCart(user_id, transaction);
+//       await createOrderItems(newOrder.order_id, items, 'processing', transaction, req, res);
+//       await createPayment(newOrder.order_id, amount, 'stripe', transaction);
+//       await clearCart(user_id, transaction);
 
-      await transaction.commit();
+//       await transaction.commit();
 
-      res.status(200).json({
-        success: true,
-        message: 'Payment verified and order created successfully',
-        order_id: newOrder.order_id,
-      });
-    } else {
-      await transaction.commit();
-      res.status(200).json({
-        success: false,
-        message: 'Payment failed or session not paid, no order created',
-      });
-    }
-  } catch (error) {
-    await transaction.rollback();
-    logger.error(`Error verifying Stripe payment: ${error.message}`, {
-      stack: error.stack,
-      request: { user_id: req.user_id, body: req.body },
-    });
+//       res.status(200).json({
+//         success: true,
+//         message: 'Payment verified and order created successfully',
+//         order_id: newOrder.order_id,
+//       });
+//     } else {
+//       await transaction.commit();
+//       res.status(200).json({
+//         success: false,
+//         message: 'Payment failed or session not paid, no order created',
+//       });
+//     }
+//   } catch (error) {
+//     await transaction.rollback();
+//     logger.error(`Error verifying Stripe payment: ${error.message}`, {
+//       stack: error.stack,
+//       request: { user_id: req.user_id, body: req.body },
+//     });
 
-    if (error.message.includes('Insufficient inventory quantity')) {
-      return res.status(400).json({
-        success: false,
-        message: 'Not enough stock available for one or more items',
-        error: error.message,
-      });
-    }
+//     if (error.message.includes('Insufficient inventory quantity')) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Not enough stock available for one or more items',
+//         error: error.message,
+//       });
+//     }
 
-    res.status(500).json({
-      success: false,
-      message: 'Failed to verify payment and create order',
-      error: error.message,
-    });
-  }
-};
+//     res.status(500).json({
+//       success: false,
+//       message: 'Failed to verify payment and create order',
+//       error: error.message,
+//     });
+//   }
+// };
 
 // Cập nhật placeOrderMomo để thêm thông tin affiliate vào extraData
 const placeOrderMomo = async (req, res) => {
@@ -1392,8 +1392,8 @@ const cancelOrder = async (req, res) => {
 // Định nghĩa route
 module.exports = {
   placeOrder,
-  placeOrderStripe,
-  verifyStripe,
+  // placeOrderStripe,
+  // verifyStripe,
   placeOrderMomo,
   verifyMomo,
   allOrders,
