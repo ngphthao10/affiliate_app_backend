@@ -18,12 +18,12 @@ async function runMySQLMigration() {
         connection = await mysql.createConnection('mysql://root:TATgzHrOfrGiXovgoznmNVMtRtjNuzlT@yamanote.proxy.rlwy.net:36544/railway?multipleStatements=true');
         console.log('Kết nối MySQL thành công, bắt đầu migration...');
 
-        const sqlFilePath = path.join(__dirname, '../../db/mysql-init/01-schema.sql');
-        const sqlContent = fs.readFileSync(sqlFilePath, 'utf8');
+        // const sqlFilePath = path.join(__dirname, '../../db/mysql-init/01-schema.sql');
+        // const sqlContent = fs.readFileSync(sqlFilePath, 'utf8');
 
         // Thực thi SQL
         console.log('Đang chạy SQL schema...');
-        await connection.query(sqlContent);
+        // await connection.query(sqlContent);
         console.log('Migration MySQL hoàn tất thành công!');
 
     } catch (error) {
