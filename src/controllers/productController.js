@@ -203,6 +203,7 @@ exports.listProducts = async (req, res) => {
         });
     }
 };
+
 exports.listBestSellers = async (req, res) => {
     try {
         // Build where condition for best sellers
@@ -652,6 +653,7 @@ exports.filterProducts = async (req, res) => {
         });
     }
 };
+
 exports.listAll = async (req, res) => {
     try {
         const { search = '', category_id, sort_by = 'creation_at', sort_order = 'DESC', min_price, max_price, in_stock } = req.query;
@@ -835,8 +837,6 @@ exports.listAll = async (req, res) => {
         });
     }
 };
-
-
 
 exports.addProduct = async (req, res) => {
     try {

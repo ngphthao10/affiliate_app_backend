@@ -12,10 +12,10 @@ const PORT = env.port;
 const startServer = async () => {
     try {
         // Run migration in production environment
-        if (process.env.NODE_ENV === 'production') {
-            logger.info('Running MySQL migration in production...');
-            await runMySQLMigration();
-        }
+        // if (process.env.NODE_ENV === 'production') {
+        //     logger.info('Running MySQL migration in production...');
+        //     await runMySQLMigration();
+        // }
 
         // Connect to MySQL
         await testConnection();

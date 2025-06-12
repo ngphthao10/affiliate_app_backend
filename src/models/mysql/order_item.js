@@ -20,6 +20,13 @@ module.exports = function (sequelize, DataTypes) {
         key: 'link_id'
       }
     },
+    payout_id: {
+      type: DataTypes.INTEGER, allowNull: true,
+      references: {
+        model: 'kol_payout',
+        key: 'payout_id'
+      }
+    },
     creation_at: { type: DataTypes.DATE, allowNull: true, defaultValue: Sequelize.Sequelize.literal('CURRENT_TIMESTAMP') },
     modified_at: { type: DataTypes.DATE, allowNull: true, defaultValue: Sequelize.Sequelize.literal('CURRENT_TIMESTAMP') }
   }, {

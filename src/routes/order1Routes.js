@@ -10,15 +10,15 @@ orderRouter.post('/list', adminAuth, allOrders);
 orderRouter.post('/status', adminAuth, updateStatus);
 
 // Payment Features
-// orderRouter.post('/place', authUser, placeOrder);
-// orderRouter.post('/stripe', authUser, placeOrderStripe);
+orderRouter.post('/place', authUser, placeOrder);
+orderRouter.post('/stripe', authUser, placeOrderStripe);
 orderRouter.post('/momo', authUser, placeOrderMomo);
 
 // User Feature 
 orderRouter.post('/userorders', authUser, userOrders);
 orderRouter.get('/items/:orderId', authUser, getOrderItems);
 // Verify payment
-// orderRouter.post('/verifyStripe', authUser, verifyStripe);
+orderRouter.post('/verifyStripe', authUser, verifyStripe);
 orderRouter.post('/verifyMomo', authUser, verifyMomo);
 // Trong file routes của bạn
 orderRouter.post('/place', testReadCookies, authUser, placeOrder);

@@ -36,7 +36,7 @@ exports.generateKolConversionReport = async (options = {}) => {
         }
 
         const whereConditions = {
-            link_id: { [Op.not]: null }
+            link_id: { [Op.not]: null },
         };
         if (Object.keys(dateFilter).length > 0) {
             whereConditions.creation_at = dateFilter;

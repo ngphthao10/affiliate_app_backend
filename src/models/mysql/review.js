@@ -4,6 +4,7 @@ module.exports = function (sequelize, DataTypes) {
     review_id: { autoIncrement: true, type: DataTypes.INTEGER, allowNull: false, primaryKey: true },
     user_id: { type: DataTypes.INTEGER, allowNull: false, references: { model: 'users', key: 'user_id' } },
     product_id: { type: DataTypes.INTEGER, allowNull: false, references: { model: 'product', key: 'product_id' } },
+    order_item_id: { type: DataTypes.INTEGER, allowNull: true, references: { model: 'order_item', key: 'order_item_id' } },
     content: { type: DataTypes.TEXT, allowNull: true },
     rate: { type: DataTypes.INTEGER, allowNull: false },
     content: { type: DataTypes.STRING(255), allowNull: true },

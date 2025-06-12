@@ -91,6 +91,8 @@ function initModels(sequelize) {
   user_role.belongsTo(users, { as: "user", foreignKey: "user_id" });
   users.hasMany(user_role, { as: "user_roles", foreignKey: "user_id" });
 
+  review.hasMany(order_item, { as: 'order_items', foreignKey: 'order_item_id' })
+
   return {
     cart_item,
     cart_session,
